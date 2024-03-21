@@ -14,7 +14,7 @@ import static com.google.cloud.healthcare.fdamystudies.common.ParticipantManager
 import static com.google.cloud.healthcare.fdamystudies.common.TestConstants.CONSENT_VERSION;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.hasSize;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -261,10 +261,12 @@ public class ConsentStoreApisTest extends BaseMockIT {
     ConsentArtifact consentArtifact = new ConsentArtifact();
     consentArtifact.setMetadata(metadata).setConsentContentVersion("1.0");
     String content = "sample consent document content";
-    byte[] encodedContent = Base64.getEncoder().encode(content.getBytes());
-
+    //byte[] encodedContent = Base64.getEncoder().encode(content.getBytes());
+    String encodedContent = new String(Base64.getEncoder().encode(content.getBytes()));
+    
     Image image = new Image();
-    image.setRawBytes(encodedContent.toString());
+    //image.setRawBytes(encodedContent.toString());
+    image.encodeRawBytes(encodedContent.getBytes());
     List<Image> images = new ArrayList<>(Arrays.asList(image));
     consentArtifact.setConsentContentScreenshots(images);
     consentArtifact.setUserId(participat_id);

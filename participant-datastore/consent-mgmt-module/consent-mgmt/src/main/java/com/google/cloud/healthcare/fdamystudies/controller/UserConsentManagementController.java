@@ -119,6 +119,8 @@ public class UserConsentManagementController {
     String userDetailId;
     String consentdocumentFilepath = null;
     String dataSharingconsentImagePath = null;
+    String dataSharingScreenShot="";
+    String consentDocument="";
     Optional<ParticipantStudyEntity> optParticipantStudies = null;
 
     UpdateEligibilityConsentBean updateEligibilityConsentBean = null;
@@ -191,6 +193,7 @@ public class UserConsentManagementController {
               consentStatusBean,
               studyConsent);
           consentdocumentFilepath = underDirectory + "/" + consentDocumentFileName;
+          consentDocument=consentStatusBean.getConsent().getPdf();
           // to check condition dataSharingScreenShot is present or not
 
           StudyConsentEntity existStudyConsent =
@@ -220,6 +223,7 @@ public class UserConsentManagementController {
               studyConsent.setDataSharingConsentArtifactPath(path);
 
               dataSharingconsentImagePath = underDirectory + "/" + dataSharingtFileName;
+              dataSharingScreenShot=consentStatusBean.getDataSharingScreenShot();
             }
           }
         }
@@ -231,7 +235,9 @@ public class UserConsentManagementController {
                 studyConsent,
                 participantStudies,
                 consentdocumentFilepath,
-                dataSharingconsentImagePath);
+                dataSharingconsentImagePath,
+                consentDocument,
+                dataSharingScreenShot);
         if ((addConsentMessage.equalsIgnoreCase(MyStudiesUserRegUtil.ErrorCodes.SUCCESS.getValue())
             && message.equalsIgnoreCase(MyStudiesUserRegUtil.ErrorCodes.SUCCESS.getValue()))) {
           if (AppConstants.STATUS_COMPLETED.equalsIgnoreCase(

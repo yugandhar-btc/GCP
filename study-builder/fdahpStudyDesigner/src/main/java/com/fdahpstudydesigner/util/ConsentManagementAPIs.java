@@ -80,6 +80,12 @@ public class ConsentManagementAPIs {
               consentDatasetId,
               consentStoreId);
 
+      logger.debug("createConsentArtifact() parentName: " + parentName);
+      logger.debug("createConsentArtifact() gcsUri: " + gcsUri);
+      logger.debug("createConsentArtifact() version: " + version);
+      logger.debug("createConsentArtifact() metaData: " + metaData);
+
+      logger.debug("configMap.get(\"dataProjectId\"): " + configMap.get("dataProjectId"));
       Image image = new Image();
       image.setGcsUri(gcsUri);
       List<Image> images = new ArrayList<>(Arrays.asList(image));
@@ -212,6 +218,7 @@ public class ConsentManagementAPIs {
       }
 
     } catch (Exception ex) {
+      logger.debug("Error datasetCreateHealthcareAPI():",ex);
       logger.entry("Error datasetCreateHealthcareAPI(): ", ex);
     }
     logger.exit("End datasetCreateHealthcareAPI()");

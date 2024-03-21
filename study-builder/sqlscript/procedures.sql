@@ -2,7 +2,7 @@ USE `fda_hphc`;
 DROP PROCEDURE IF EXISTS `deleteInActiveActivity`;
 DELIMITER //
 CREATE PROCEDURE `deleteInActiveActivity`(
-	IN `studyId` INT(11)
+	IN `studyId` VARCHAR(255)
 )
 BEGIN
 
@@ -128,10 +128,10 @@ DELIMITER ;
 DROP PROCEDURE IF EXISTS `deleteQuestionnaire`;
 DELIMITER //
 CREATE PROCEDURE `deleteQuestionnaire`(
-	IN `questionnaireId` INT(11),
+	IN `questionnaireId` VARCHAR(255),
 	IN `modifiedOn` VARCHAR(255),
-	IN `modifiedBy` INT(11),
-	IN `studyId` INT(50)
+	IN `modifiedBy` VARCHAR(255),
+	IN `studyId` VARCHAR(255)
 )
 BEGIN
 
@@ -155,7 +155,7 @@ DELIMITER ;
 DROP PROCEDURE IF EXISTS `deleteQuestionnaireFrequencies`;
 DELIMITER //
 CREATE PROCEDURE `deleteQuestionnaireFrequencies`(
-	IN `questionnaireId` INT(11)
+	IN `questionnaireId` VARCHAR(255)
 )
 BEGIN
 
@@ -169,11 +169,11 @@ DELIMITER ;
 DROP PROCEDURE IF EXISTS `deleteQuestionnaireStep`;
 DELIMITER //
 CREATE PROCEDURE `deleteQuestionnaireStep`(
-	IN `questionnaireId` INT(11),
+	IN `questionnaireId` VARCHAR(255),
 	IN `modifiedOn` VARCHAR(255),
-	IN `modifiedBy` INT(11),
+	IN `modifiedBy` VARCHAR(255),
 	IN `sequenceNo` INT(11),
-	IN `stepId` INT(11),
+	IN `stepId` VARCHAR(255),
 	IN `steptype` VARCHAR(255)
 )
 BEGIN

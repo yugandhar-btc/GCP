@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>2.2.6.RELEASE</version>
+    <version>2.5.8</version>
     <relativePath/> <!-- lookup parent from repository -->
   </parent>
   <groupId>com.google.cloud.healthcare.fdamystudies</groupId>
@@ -18,7 +18,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <java.version>1.8</java.version>
+    <java.version>17</java.version>
 
     <sonar.coverage.exclusions>**/*</sonar.coverage.exclusions>
     <junit-jupiter.version>5.5.2</junit-jupiter.version>
@@ -268,10 +268,10 @@
       <plugin>
         <groupId>com.google.cloud.tools</groupId>
         <artifactId>jib-maven-plugin</artifactId>
-        <version>2.6.0</version>
+        <version>3.4.1</version>
         <configuration>
           <from>
-            <image>tomcat:9.0.33-jdk11-openjdk</image>
+            <image>tomcat:9.0-jdk17-openjdk</image>
           </from>
           <container>
             <appRoot>/usr/local/tomcat/webapps/participant-user-datastore</appRoot>
@@ -281,9 +281,10 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.12.1</version>
         <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
+          <source>17</source>
+          <target>17</target>
           <fork>true</fork>
           <compilerArgs>
             <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
@@ -301,7 +302,7 @@
             <path>
               <groupId>org.projectlombok</groupId>
               <artifactId>lombok</artifactId>
-              <version>1.18.12</version>
+              <version>1.18.30</version>
             </path>
           </annotationProcessorPaths>
         </configuration>

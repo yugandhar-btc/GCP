@@ -9,9 +9,10 @@ package com.google.cloud.healthcare.fdamystudies.controller;
 
 import static com.google.cloud.healthcare.fdamystudies.common.CommonConstants.USER_ID_HEADER;
 import static com.google.cloud.healthcare.fdamystudies.common.ParticipantManagerEvent.CONSENT_DOCUMENT_DOWNLOADED;
+import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -45,6 +46,7 @@ import com.jayway.jsonpath.JsonPath;
 import java.util.Base64;
 import java.util.Map;
 import org.apache.commons.collections4.map.HashedMap;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -140,7 +142,7 @@ public class ConsentControllerTest extends BaseMockIT {
 
     String sampleContent = JsonPath.read(result.getResponse().getContentAsString(), "$.content");
 
-    assertThat(Base64.getDecoder().decode(sampleContent.getBytes()), is(encodedContent));
+    assertThat(Base64.getDecoder().decode(sampleContent.getBytes()), equalTo(encodedContent));
 
     AuditLogEventRequest auditRequest = new AuditLogEventRequest();
     auditRequest.setSiteId(siteEntity.getId());

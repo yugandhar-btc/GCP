@@ -13,7 +13,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.hamcrest.CoreMatchers.equalTo;
-import static org.junit.Assert.assertThat;
+import org.assertj.core.api.Assertions;
 
 import com.google.cloud.healthcare.fdamystudies.common.BaseMockIT;
 import org.junit.jupiter.api.Test;
@@ -40,7 +40,7 @@ public class RestTemplateAuthTokenModifierInterceptorTest extends BaseMockIT {
 
     ResponseEntity<Void> response =
         restTemplate.exchange(url, HttpMethod.GET, requestEntity, Void.class);
-    assertThat(response.getStatusCode(), equalTo(HttpStatus.OK));
+    Assertions.assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
     verify(
         1,

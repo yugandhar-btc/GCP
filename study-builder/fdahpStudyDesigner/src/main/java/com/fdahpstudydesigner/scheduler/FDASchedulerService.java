@@ -23,6 +23,7 @@
 package com.fdahpstudydesigner.scheduler;
 
 import static com.fdahpstudydesigner.common.StudyBuilderAuditEvent.NOTIFICATION_METADATA_SENT_TO_PARTICIPANT_DATASTORE;
+import static com.fdahpstudydesigner.common.StudyBuilderAuditEvent.NOTIFICATION_METADATA_SEND_OPERATION_FAILED;
 
 import com.fdahpstudydesigner.bean.AuditLogEventRequest;
 import com.fdahpstudydesigner.bean.PushNotificationBean;
@@ -144,7 +145,7 @@ public class FDASchedulerService {
   public void sendPushNotification() {
 
     // TODO: uncomment logger statements
-    // logger.entry("begin sendPushNotification()");
+     logger.debug("begin sendPushNotification()");
     List<PushNotificationBean> pushNotificationBeans;
     List<PushNotificationBean> pushNotificationBeanswithAppId =
         new ArrayList<PushNotificationBean>();
@@ -165,16 +166,19 @@ public class FDASchedulerService {
       pushNotificationBeans =
           notificationDAO.getPushNotificationList(
               FdahpStudyDesignerUtil.getTimeStamp(date, time).toString());
+      logger.debug("begin sendPushNotification() pushNotificationBeans"+pushNotificationBeans.toString());
       // pushNotificationToSaveInHistory = pushNotificationBeans;
       if ((pushNotificationBeans != null) && !pushNotificationBeans.isEmpty()) {
         for (PushNotificationBean p : pushNotificationBeans) {
           if (p.getAppId() == null) {
             List<String> appIds = notificationService.getGatwayAppList();
+            logger.debug("begin sendPushNotification() appIds"+appIds.toString());
             if (!appIds.isEmpty()) {
               for (String appId : appIds) {
                 PushNotificationBean pushBean = new PushNotificationBean();
                 BeanUtils.copyProperties(pushBean, p);
                 pushBean.setAppId(appId);
+                logger.debug("begin sendPushNotification() pushNotificationBeanswithAppId"+pushNotificationBeanswithAppId.toString());
                 pushNotificationBeanswithAppId.add(pushBean);
               }
             }
@@ -194,15 +198,18 @@ public class FDASchedulerService {
           }
         }
         List<PushNotificationBean> pushNotification = new ArrayList<PushNotificationBean>();
+        logger.debug("begin sendPushNotification() finalPushNotificationBeansbeforeloop"+finalPushNotificationBeans.toString());
         for (PushNotificationBean finalPushNotificationBean : finalPushNotificationBeans) {
           StudyBo studyDetails =
               studyDAO.getStudyByLatestVersion(finalPushNotificationBean.getCustomStudyId());
           String deviceType = null;
           if (studyDetails != null
               && studyDetails.getPlatform().equalsIgnoreCase(FdahpStudyDesignerConstants.IOS)) {
+        	  logger.debug("begin sendPushNotification() IOS"+studyDetails.toString()); 
             deviceType = FdahpStudyDesignerConstants.DEVICE_IOS;
           } else if (studyDetails != null
               && studyDetails.getPlatform().equalsIgnoreCase(FdahpStudyDesignerConstants.ANDROID)) {
+        	  logger.debug("begin sendPushNotification() ANDROID"+studyDetails.toString()); 
             deviceType = FdahpStudyDesignerConstants.DEVICE_ANDROID;
           }
 
@@ -210,19 +217,21 @@ public class FDASchedulerService {
           pushNotification.add(finalPushNotificationBean);
 
           JSONArray arrayToJson = new JSONArray(objectMapper.writeValueAsString(pushNotification));
-          //  logger.info("FDASchedulerService - sendPushNotification " + arrayToJson);
+            logger.debug("FDASchedulerService - sendPushNotification  arrayToJson" + arrayToJson);
           JSONObject json = new JSONObject();
           json.put("notifications", arrayToJson);
-          //   logger.info("FDASchedulerService - sendPushNotification " + arrayToJson);
+             logger.debug("FDASchedulerService - sendPushNotification arrayToJson1 " + arrayToJson);
 
           HttpParams httpParams = new BasicHttpParams();
           HttpConnectionParams.setConnectionTimeout(httpParams, 30000);
           HttpConnectionParams.setSoTimeout(httpParams, 30000);
           HttpClient client = new DefaultHttpClient(httpParams);
-
+          logger.debug("begin getAccessToken()"+oauthService.getAccessToken());
           HttpResponse response =
               invokePushNotificationApi(json, client, oauthService.getAccessToken());
+          logger.debug("FDASchedulerService - sendPushNotification response " + response.toString());
           if (response.getStatusLine().getStatusCode() == HttpStatus.UNAUTHORIZED.value()) {
+        	  logger.debug("FDASchedulerService - sendPushNotification UNAUTHORIZED " + response.toString());
             // Below method is called to indicate that the content of this entity is no longer
             // required.This will fix the error
             // Invalid use of BasicClientConnManager: connection still allocated.
@@ -232,11 +241,11 @@ public class FDASchedulerService {
           }
 
           if (response.getStatusLine().getStatusCode() != HttpStatus.OK.value()) {
-            //   logger.error(
-            //       String.format(
-            //           "Push notification API failed with status=%d",
-            //          response.getStatusLine().getStatusCode()));
-            //  logSendNotificationFailedEvent(NOTIFICATION_METADATA_SEND_OPERATION_FAILED);
+               logger.error(
+                   String.format(
+                       "Push notification API failed with status=%d",
+                     response.getStatusLine().getStatusCode()));
+              logSendNotificationFailedEvent(NOTIFICATION_METADATA_SEND_OPERATION_FAILED);
           } else {
             updateNotification(finalPushNotificationBean);
             logSendNotificationFailedEvent(NOTIFICATION_METADATA_SENT_TO_PARTICIPANT_DATASTORE);
@@ -245,12 +254,12 @@ public class FDASchedulerService {
         }
       }
     } catch (Exception e) {
-      //   logger.error("FDASchedulerService - sendPushNotification - ERROR", e.getCause());
-      //   e.printStackTrace();
+         logger.error("FDASchedulerService - sendPushNotification - ERROR", e);
+        e.printStackTrace();
 
-      //  logSendNotificationFailedEvent(NOTIFICATION_METADATA_SEND_OPERATION_FAILED);
+        logSendNotificationFailedEvent(NOTIFICATION_METADATA_SEND_OPERATION_FAILED);
     }
-    // logger.exit("sendPushNotification() - Ends");
+    logger.exit("sendPushNotification() - Ends");
   }
 
   private void updateNotification(PushNotificationBean pushNotificationBean) {

@@ -69,13 +69,15 @@ public class ConsentManagementAPIs {
       String userId,
       String version,
       String gcsUri,
-      String parentName) {
+      String parentName,
+      String consentDocument) {
     logger.entry("Begin createConsentArtifact()");
     try {
       CloudHealthcare client = createClient();
 
       Image image = new Image();
-      image.setGcsUri(gcsUri);
+      //image.setGcsUri(gcsUri);
+      image.encodeRawBytes(consentDocument.getBytes());
       List<Image> images = new ArrayList<>(Arrays.asList(image));
 
       ConsentArtifact consentArtifact =

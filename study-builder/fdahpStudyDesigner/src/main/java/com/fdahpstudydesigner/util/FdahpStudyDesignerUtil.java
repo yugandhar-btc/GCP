@@ -1384,6 +1384,7 @@ public class FdahpStudyDesignerUtil {
   public static String saveFile(String fileName, byte[] bytes, String underDirectory) {
 
     String absoluteFileName = underDirectory == null ? fileName : underDirectory + "/" + fileName;
+    String cloudbacketname=configMap.get("cloud.bucket.name.consent.document");
     BlobInfo blobInfo =
         BlobInfo.newBuilder(configMap.get("cloud.bucket.name.consent.document"), absoluteFileName)
             .build();

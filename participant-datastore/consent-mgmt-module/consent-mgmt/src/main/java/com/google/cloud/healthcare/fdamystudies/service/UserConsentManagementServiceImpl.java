@@ -31,6 +31,7 @@ import com.google.cloud.healthcare.fdamystudies.model.StudyConsentEntity;
 import com.google.cloud.healthcare.fdamystudies.model.StudyEntity;
 import com.google.cloud.storage.StorageException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -80,9 +81,11 @@ public class UserConsentManagementServiceImpl implements UserConsentManagementSe
       StudyConsentEntity studyConsent,
       ParticipantStudyEntity participantStudyEntity,
       String filePath,
-      String dataSharingPath) {
+      String dataSharingPath,
+      String consentDocument,
+      String dataSharingScreenShot) {
     return userConsentManagementDao.saveStudyConsent(
-        studyConsent, participantStudyEntity, filePath, dataSharingPath);
+        studyConsent, participantStudyEntity, filePath, dataSharingPath,consentDocument,dataSharingScreenShot);
   }
 
   @Override
@@ -210,8 +213,10 @@ public class UserConsentManagementServiceImpl implements UserConsentManagementSe
             getImageConsentFromConsentStore(participantId, customId);
         if (consentArtifactforImage != null
             && consentArtifactforImage.getConsentContentVersion() != null) {
-          consentStudyResponseBean.setDataSharingScreenShot(
-              consentArtifactforImage.getConsentContentScreenshots().get(0).getRawBytes());
+          byte[] dataSharingdecodedBytes = Base64.getDecoder()
+					.decode(consentArtifactforImage.getConsentContentScreenshots().get(0).getRawBytes());
+			//System.out.println(new String(dataSharingdecodedBytes));
+			consentStudyResponseBean.setDataSharingScreenShot(new String(dataSharingdecodedBytes));
         }
         // ends here
         if (consentArtifact != null && consentArtifact.getConsentContentVersion() != null) {
@@ -221,9 +226,10 @@ public class UserConsentManagementServiceImpl implements UserConsentManagementSe
 
           consentStudyResponseBean.getConsent().setType("application/pdf");
           consentStudyResponseBean.setSharing(consentArtifact.getMetadata().get(DATA_SHARING));
-          consentStudyResponseBean
-              .getConsent()
-              .setContent(consentArtifact.getConsentContentScreenshots().get(0).getRawBytes());
+          byte[] consentpdfdecodedBytes = Base64.getDecoder()
+  				.decode(consentArtifact.getConsentContentScreenshots().get(0).getRawBytes());
+  		//System.out.println(new String(consentpdfdecodedBytes));
+  		consentStudyResponseBean.getConsent().setContent(new String(consentpdfdecodedBytes));
           auditRequest.setParticipantId(participantStudiesEntity.getParticipantId());
           Map<String, String> map =
               Collections.singletonMap("file_name", consentArtifact.getMetadata().get(PDF_PATH));

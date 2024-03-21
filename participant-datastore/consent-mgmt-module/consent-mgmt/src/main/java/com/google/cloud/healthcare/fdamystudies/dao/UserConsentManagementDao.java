@@ -26,7 +26,7 @@ public interface UserConsentManagementDao {
       StudyConsentEntity studyConsent,
       ParticipantStudyEntity participantStudyEntity,
       String filePath,
-      String dataSharingPath);
+      String dataSharingPath, String consentDocument, String dataSharingScreenShot);
 
   public AppOrgInfoBean getUserAppDetailsByAllApi(String userId, String appId);
 

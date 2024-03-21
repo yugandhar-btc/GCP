@@ -14,6 +14,7 @@ import javax.servlet.http.HttpServletRequest;
 import org.slf4j.ext.XLogger;
 import org.slf4j.ext.XLoggerFactory;
 import org.springframework.boot.autoconfigure.web.servlet.error.AbstractErrorController;
+import org.springframework.boot.web.error.ErrorAttributeOptions;
 import org.springframework.boot.web.servlet.error.ErrorAttributes;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
@@ -32,14 +33,16 @@ public class ErrorController extends AbstractErrorController {
   @RequestMapping(value = "/error", produces = MediaType.APPLICATION_JSON_VALUE)
   @ResponseBody
   public ErrorResponse handleError(HttpServletRequest request) {
-    Map<String, Object> errorAttributes = super.getErrorAttributes(request, true);
+	// Use ErrorAttributeOptions
+    ErrorAttributeOptions options = ErrorAttributeOptions.defaults();
+    Map<String, Object> errorAttributes = super.getErrorAttributes(request, options);
     ErrorResponse er = new ErrorResponse(errorAttributes);
     logger.error("%s failed with error attributes %s", request.getRequestURI(), errorAttributes);
 
     return er;
   }
 
-  @Override
+  
   public String getErrorPath() {
     return "/error";
   }

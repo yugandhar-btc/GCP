@@ -49,7 +49,8 @@ import java.util.concurrent.TimeUnit;
 import javax.servlet.ServletContext;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang3.StringUtils;
-import org.glassfish.jersey.internal.util.Base64;
+//import org.glassfish.jersey.internal.util.Base64;
+import java.util.Base64;
 import org.slf4j.ext.XLogger;
 import org.slf4j.ext.XLoggerFactory;
 
@@ -249,7 +250,7 @@ public class StudyMetaDataUtil {
       return "";
     }
     try {
-      byte[] bytesEncoded = Base64.encode(plainText.getBytes());
+      byte[] bytesEncoded = Base64.getEncoder().encode(plainText.getBytes());
       return new String(bytesEncoded);
     } catch (Exception e) {
       LOGGER.error("StudyMetaDataUtil - getEncodedStringByBase64() - ERROR ", e);
@@ -264,7 +265,7 @@ public class StudyMetaDataUtil {
       return "";
     }
     try {
-      byte[] valueDecoded = Base64.decode(encodedText);
+      byte[] valueDecoded = Base64.getDecoder().decode(encodedText);
       return new String(valueDecoded);
     } catch (Exception e) {
       LOGGER.error("StudyMetaDataUtil - getDecodedStringByBase64() - ERROR ", e);
@@ -449,7 +450,7 @@ public class StudyMetaDataUtil {
       if (StringUtils.isNotEmpty(authCredentials) && authCredentials.contains("Basic")) {
         final byte[] encodedUserPassword =
             authCredentials.replaceFirst("Basic" + " ", "").getBytes();
-        byte[] decodedBytes = Base64.decode(encodedUserPassword);
+        byte[] decodedBytes = Base64.getDecoder().decode(encodedUserPassword);
         bundleIdAndAppToken = new String(decodedBytes, "UTF-8");
 
         if (bundleIdAndAppToken.contains(":")) {
@@ -652,7 +653,7 @@ public class StudyMetaDataUtil {
       if (StringUtils.isNotEmpty(authCredentials) && authCredentials.contains("Basic")) {
         final byte[] encodedUserPassword =
             authCredentials.replaceFirst("Basic" + " ", "").getBytes();
-        byte[] decodedBytes = Base64.decode(encodedUserPassword);
+        byte[] decodedBytes = Base64.getDecoder().decode(encodedUserPassword);
         bundleIdAndAppToken = new String(decodedBytes, "UTF-8");
         if (bundleIdAndAppToken.contains(":")) {
           final StringTokenizer tokenizer = new StringTokenizer(bundleIdAndAppToken, ":");

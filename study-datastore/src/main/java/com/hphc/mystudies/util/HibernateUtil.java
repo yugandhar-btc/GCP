@@ -24,7 +24,8 @@
 package com.hphc.mystudies.util;
 
 import org.hibernate.SessionFactory;
-import org.hibernate.cfg.AnnotationConfiguration;
+//import org.hibernate.cfg.AnnotationConfiguration;
+import org.hibernate.cfg.Configuration;
 import org.slf4j.ext.XLogger;
 import org.slf4j.ext.XLoggerFactory;
 
@@ -43,7 +44,7 @@ public class HibernateUtil {
     try {
       if (sessionFactory == null) {
         sessionFactory =
-            new AnnotationConfiguration()
+            new Configuration()
                 .addProperties(
                     PropertiesUtil.makePropertiesWithEnvironmentVariables("application.properties"))
                 .configure("hibernate.cfg.xml")

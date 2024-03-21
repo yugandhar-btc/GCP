@@ -562,24 +562,29 @@ public class ActivityResponseProcessorServiceImpl implements ActivityResponsePro
     logger.info("saveActivityResponseData() : \n Study Collection Name: " + studyCollectionName);
     String fhirJson = "";
     if (appConfig.getEnableFhirApi().contains("fhir")
-        && appConfig.getDiscardFhirAfterDid().equalsIgnoreCase("false")) {
-      fhirJson = processToFhirResponse(questionnaireActivityResponseBean, locale);
+            && appConfig.getDiscardFhirAfterDid().equalsIgnoreCase("false") || (appConfig.getEnableFhirApi().contains("fhir")
+                    && !(appConfig.getEnableFhirApi().contains("did"))
+                    && appConfig.getDiscardFhirAfterDid().equalsIgnoreCase("true"))) {
+          fhirJson = processToFhirResponse(questionnaireActivityResponseBean, locale);
 
-    } else {
-      responsesDao.saveActivityResponseData(
-          studyId,
-          studyCollectionName,
-          AppConstants.ACTIVITIES_COLLECTION_NAME,
-          dataToStoreActivityResults);
-    }
+        } else {
+          if (appConfig.getEnableFhirApi().contains("false")) {
 
-    if (appConfig.getEnableFhirApi().contains("did")) {
-      logger.info(" did Enabled " + appConfig.getEnableFhirApi());
-      if (StringUtils.isBlank(fhirJson)) {
-        fhirJson = processToFhirResponse(questionnaireActivityResponseBean, locale);
-      }
-      processToDIDResponse(fhirJson, questionnaireActivityResponseBean);
-      logger.info("did end");
+            responsesDao.saveActivityResponseData(
+                studyId,
+                studyCollectionName,
+                AppConstants.ACTIVITIES_COLLECTION_NAME,
+                dataToStoreActivityResults);
+          }
+        }
+
+        if (appConfig.getEnableFhirApi().contains("did")) {
+          logger.info(" did Enabled " + appConfig.getEnableFhirApi());
+          if (StringUtils.isBlank(fhirJson)) {
+            fhirJson = processToFhirResponse(questionnaireActivityResponseBean, locale);
+          }
+          processToDIDResponse(fhirJson, questionnaireActivityResponseBean);
+          logger.info("did end");
     }
     logger.exit("saveActivityResponseData() - ends ");
   }
@@ -1243,11 +1248,12 @@ public class ActivityResponseProcessorServiceImpl implements ActivityResponsePro
     try {
       fhirHealthcareAPIs.fhirStoreGet(datasetPath + FHIR_STORES + studyId);
     } catch (Exception e) {
-      if (e instanceof GoogleJsonResponseException
-          && ((GoogleJsonResponseException) e).getStatusCode() == 404
-          && ((GoogleJsonResponseException) e).getStatusMessage().equals("Not Found")) {
-        fhirHealthcareAPIs.fhirStoreCreate(datasetPath, studyId);
-      }
+//      if (e instanceof GoogleJsonResponseException
+//          && ((GoogleJsonResponseException) e).getStatusCode() == 404
+//          && ((GoogleJsonResponseException) e).getStatusMessage().equals("Not Found")) {
+//        fhirHealthcareAPIs.fhirStoreCreate(datasetPath, studyId);
+//      }    	
+    	fhirHealthcareAPIs.fhirStoreCreate(datasetPath, studyId);      
     }
   }
 

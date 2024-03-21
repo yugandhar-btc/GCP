@@ -167,9 +167,12 @@ public class ConsentServiceImpl implements ConsentService {
           throw new ErrorCodeException(ErrorCode.SITE_PERMISSION_ACCESS_DENIED);
         }
       }
-
-      document = consentArtifact.getConsentContentScreenshots().get(0).getRawBytes();
-
+      byte[] consentpdfdecodedBytes = Base64.getDecoder()
+				.decode(consentArtifact.getConsentContentScreenshots().get(0).getRawBytes());
+		//System.out.println(new String(consentpdfdecodedBytes));
+      //document = consentArtifact.getConsentContentScreenshots().get(0).getRawBytes();
+		document = new String(consentpdfdecodedBytes);
+		
       Optional<SiteEntity> optSiteEntity =
           siteRepository.findById(optParticipant.get().getSite().getId());
 

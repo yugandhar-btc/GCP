@@ -4988,7 +4988,7 @@ public class StudyQuestionnaireDAOImpl implements StudyQuestionnaireDAO {
               session
                   .createQuery("from StudyBo where customStudyId=:customStudyId and live=0")
                   .setString("customStudyId", customStudyId)
-                  .uniqueResult();
+                  .setMaxResults(1).uniqueResult();
       if (studyBo != null) {
         if (!studyBo.isEnrollmentdateAsAnchordate()) {
           subQuery = "and name != '" + FdahpStudyDesignerConstants.ANCHOR_TYPE_ENROLLMENTDATE + "'";

@@ -1,3 +1,22 @@
+SET REFERENTIAL_INTEGRITY FALSE;
+
+DELETE FROM app_info WHERE id IN (1,2,3);
+DELETE FROM study_info WHERE id IN (1,2,3,4);
+DELETE FROM locations WHERE id=2;
+DELETE FROM sites WHERE id IN (1,2,3);
+DELETE FROM user_details WHERE id IN (44, 45,46,47,48);
+DELETE FROM participant_registry_site WHERE id IN (33,34,35);
+DELETE FROM participant_study_info WHERE id IN (101, 102,103,104);
+DELETE FROM auth_info WHERE id IN (222,223);
+DELETE FROM user_app_details WHERE id=20;
+DELETE FROM ur_admin_user WHERE id=1;
+DELETE FROM app_permissions WHERE id=1;
+DELETE FROM study_permissions WHERE id=1;
+DELETE FROM sites_permissions WHERE id=1;
+
+
+SET REFERENTIAL_INTEGRITY TRUE;
+
 INSERT INTO `app_info`(`id`, `custom_app_id`, `created_time`, `app_name`, `created_by`, `updated_time`, `ios_authorization_token`, `ios_team_id`, `ios_bundle_id`, `android_server_key`, `ios_key_id`, `contact_us_to_email`, `feedback_to_email`, `from_email_id`, `app_status`, `android_latest_app_version`, `ios_latest_app_build_version`, `android_force_upgrade`, `ios_force_upgrade`, `app_support_email_address`) VALUES (1, 'GCPMS001', '2020-01-16 15:22:22', 'app-name-1', 0, '2020-03-12 15:17:56', 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR1RBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJIa3dkd0lCQVFRZ2hVSlkwUnc1OWpZVDQzRVoKamUrN1BXb01iVlBHaWY1cThtTnI1R1pVNkxhZ0NnWUlLb1pJemowREFRZWhSQU5DQUFRbE9yZ2lIT0w0MzQ1cgpJNnBJNWh1YVdiTVU0dmM3WDRFYUVaYlZlS3hHbGFqNE1XUjl2ekZFVTMwNzlBYUdjdEp5RFZkRmcwb0hQOWhFCkN1STZyNjRnCi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=', '3485DDCN2M', 'com.btc.mystudiesgcp', 'AIzaSyDvFNoRTZJfrLnxU50wXbPDqjVBXcpQRa8', 'QU6XK35ALG', 'contactus_app_test@grr.la', 'feedback_app_test@grr.la', 'from_email_test@grr.la', 'Active', '1.0', '1.0', '0', '1', 'support_email@grr.la'), (2, 'GCPMS002', '2020-01-16 15:22:22', 'app-name-1', 0, '2020-03-12 15:17:56', 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR1RBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJIa3dkd0lCQVFRZ2hVSlkwUnc1OWpZVDQzRVoKamUrN1BXb01iVlBHaWY1cThtTnI1R1pVNkxhZ0NnWUlLb1pJemowREFRZWhSQU5DQUFRbE9yZ2lIT0w0MzQ1cgpJNnBJNWh1YVdiTVU0dmM3WDRFYUVaYlZlS3hHbGFqNE1XUjl2ekZFVTMwNzlBYUdjdEp5RFZkRmcwb0hQOWhFCkN1STZyNjRnCi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=', '3485DDCN2M', 'com.btc.mystudiesgcp', 'AIzaSyDvFNoRTZJfrLnxU50wXbPDqjVBXcpQRa8', 'QU6XK35ALG', 'contactus_app_test@grr.la', 'feedback_app_test@grr.la', 'from_email_test@grr.la', 'Active', '1.0', '1.0', '0', '1', 'support_email@grr.la'),(3, 'GCPMS003', '2020-01-16 15:22:22', 'app-name-2', 0, '2020-03-12 15:17:56', 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR1RBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJIa3dkd0lCQVFRZ2hVSlkwUnc1OWpZVDQzRVoKamUrN1BXb01iVlBHaWY1cThtTnI1R1pVNkxhZ0NnWUlLb1pJemowREFRZWhSQU5DQUFRbE9yZ2lIT0w0MzQ1cgpJNnBJNWh1YVdiTVU0dmM3WDRFYUVaYlZlS3hHbGFqNE1XUjl2ekZFVTMwNzlBYUdjdEp5RFZkRmcwb0hQOWhFCkN1STZyNjRnCi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=', '3485DDCN2M', 'com.btc.mystudiesgcp', 'AIzaSyDvFNoRTZJfrLnxU50wXbPDqjVBXcpQRa8', 'QU6XK35ALG', 'contactus_app_test@grr.la', 'feedback_app_test@grr.la', 'from_email_test@grr.la', 'Active', '1.0', '1.0', '0', '1', 'support_email@grr.la');
 
 INSERT INTO `study_info` (`id`, `custom_id`, `app_info_id`, `name`, `description`, `type`,`created_by`, `created_time`, `updated_time`, `version`) VALUES (1, 'StudyID001', 1, 'name', 'description', 'OPEN', 0, '2020-03-12 15:23:41', '2020-03-12 15:24:42', '3.5'), (2, 'studyId1', 1, 'name', 'description', 'OPEN', 0, '2020-03-12 15:23:41', '2020-03-12 15:24:42', '3.6'), (3, 'custom-id-2', 1, 'name-2', 'description', 'CLOSED', 0, '2020-03-12 15:23:44', '2020-03-12 15:24:45', '3.7'), (4, '132', 1, 'name', 'description', 'OPEN', 0, '2020-03-12 15:23:41', '2020-03-12 15:24:42', '3.8');

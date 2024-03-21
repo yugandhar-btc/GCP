@@ -41,9 +41,9 @@ import static com.google.cloud.healthcare.fdamystudies.utils.Constants.USER_ID_H
 import static com.google.cloud.healthcare.fdamystudies.utils.Constants.VALID_USER_ID;
 import static com.google.cloud.healthcare.fdamystudies.utils.ErrorCode.EC_701;
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;

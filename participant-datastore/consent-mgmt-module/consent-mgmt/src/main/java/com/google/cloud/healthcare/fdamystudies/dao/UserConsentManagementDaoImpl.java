@@ -276,7 +276,9 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
       StudyConsentEntity studyConsent,
       ParticipantStudyEntity participantStudyEntity,
       String filePath,
-      String dataSharingPath) {
+      String dataSharingPath,
+      String consentDocument,
+      String dataSharingScreenShot) {
     logger.entry("Begin saveStudyConsent()");
 
     Session session = this.sessionFactory.getCurrentSession();
@@ -291,7 +293,7 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
       if (!StringUtils.isEmpty(flag) && Boolean.valueOf(flag) && filePath != null) {
         isSaved =
             saveConsentDetailsInConsentStore(
-                studyConsent, participantStudyEntity, filePath, dataSharingPath);
+                studyConsent, participantStudyEntity, filePath, dataSharingPath,consentDocument,dataSharingScreenShot);
       } else {
         isSaved = (String) session.save(studyConsent);
       }
@@ -399,6 +401,8 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
    * Saves Consent details in consent store
    *
    * @param studyConsent
+ * @param dataSharingScreenShot 
+ * @param consentDocument 
    * @return
    * @throws Exception
    */
@@ -406,7 +410,7 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
       StudyConsentEntity studyConsent,
       ParticipantStudyEntity participantStudyEntity,
       String filePath,
-      String dataSharingImagePath) {
+      String dataSharingImagePath, String consentDocument, String dataSharingScreenShot) {
     logger.entry("Begin saveConsentDetailsInConsentStore()");
 
     String parentName =
@@ -418,14 +422,15 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
             "CONSENT_" + studyConsent.getStudy().getCustomId());
 
     String primaryConsentArtifactName =
-        createPrimaryRecord(studyConsent, participantStudyEntity, filePath, parentName);
+        createPrimaryRecord(studyConsent, participantStudyEntity, filePath, parentName,consentDocument);
 
     createDataSharingRecord(
         studyConsent,
         participantStudyEntity,
         dataSharingImagePath,
         parentName,
-        primaryConsentArtifactName);
+        primaryConsentArtifactName,
+        dataSharingScreenShot);
 
     /*    // dataSharing consent record
     String filter3 = "Metadata(\"" + CONSENT_TYPE + "\")=\"" + SHARING + "\"";
@@ -453,7 +458,7 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
       StudyConsentEntity studyConsent,
       ParticipantStudyEntity participantStudyEntity,
       String filePath,
-      String parentName) {
+      String parentName, String consentDocument) {
 
     Map<String, String> artifactMetadata = new HashedMap<String, String>();
     artifactMetadata.put(PDF_PATH, studyConsent.getPdfPath());
@@ -476,7 +481,8 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
             participantStudyEntity.getParticipantId(),
             studyConsent.getVersion(),
             gcsUri,
-            parentName);
+            parentName,
+            consentDocument);
 
     // primary consent record
     String filter1 = "user_id=\"" + participantStudyEntity.getParticipantId() + "\"";
@@ -504,7 +510,7 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
       ParticipantStudyEntity participantStudyEntity,
       String dataSharingImagePath,
       String parentName,
-      String primaryConsentArtifactName) {
+      String primaryConsentArtifactName, String dataSharingScreenShot) {
 
     logger.entry("Begin createDataSharingRecord()");
     if (!participantStudyEntity.getSharing().equals(DataSharingStatus.NOT_APPLICABLE.value())
@@ -532,7 +538,8 @@ public class UserConsentManagementDaoImpl implements UserConsentManagementDao {
               participantStudyEntity.getParticipantId(),
               studyConsent.getVersion(),
               gcsUri,
-              parentName);
+              parentName,
+              dataSharingScreenShot);
 
       // dataSharing consent record
       String filter1 = "user_id=\"" + participantStudyEntity.getParticipantId() + "\"";

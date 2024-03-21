@@ -8,7 +8,7 @@
 
 package com.google.cloud.healthcare.fdamystudies.oauthscim.common;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.cloud.healthcare.fdamystudies.common.PasswordGenerator;
 import java.util.HashSet;
@@ -31,8 +31,8 @@ public class PasswordGeneratorTest {
   public String genarateUniqueValidPassword(int passwordLength) {
     String password = PasswordGenerator.generate(passwordLength);
 
-    assertTrue("Password length should not be zero", password.length() != 0);
-    assertTrue("Password length mismatched", password.length() == passwordLength);
+    assertTrue( password.length() != 0,"Password length should not be zero");
+    assertTrue( password.length() == passwordLength , "Password length mismatched");
 
     return password;
   }

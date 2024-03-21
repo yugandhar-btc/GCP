@@ -44,7 +44,10 @@ public class ErrorResponse {
   public ErrorResponse(Map<String, Object> errorAttributes) {
     status = Integer.parseInt(errorAttributes.get("status").toString());
     errorType = errorAttributes.get("error").toString();
-    errorDescription = errorAttributes.get("message").toString();
+    //errorDescription = errorAttributes.get("message").toString();
+    Object errorMessageObject = errorAttributes.get("message");
+    errorDescription = errorMessageObject != null ? errorMessageObject.toString() : "Unknown error";
+
   }
 
   private void populateErrorFields(RestClientResponseException restClientResponseException) {

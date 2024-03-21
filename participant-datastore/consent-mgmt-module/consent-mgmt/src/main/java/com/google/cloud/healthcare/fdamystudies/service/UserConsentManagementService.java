@@ -27,7 +27,7 @@ public interface UserConsentManagementService {
       StudyConsentEntity studyConsent,
       ParticipantStudyEntity participantStudyEntity,
       String filePath,
-      String dataSharingPath);
+      String dataSharingPath, String consentDocument, String dataSharingScreenShot);
 
   public ConsentStudyResponseBean getStudyConsentDetails(
       String userId, String studyId, String consentVersion, AuditLogEventRequest auditRequest);

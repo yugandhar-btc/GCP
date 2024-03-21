@@ -24,11 +24,13 @@
 package com.hphc.mystudies.web.servlet;
 
 import com.hphc.mystudies.util.StudyMetaDataUtil;
+
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringTokenizer;
 import org.apache.commons.lang3.StringUtils;
-import org.glassfish.jersey.internal.util.Base64;
+//import org.glassfish.jersey.internal.util.Base64;
 import org.slf4j.ext.XLogger;
 import org.slf4j.ext.XLoggerFactory;
 
@@ -50,7 +52,7 @@ public class AuthenticationService {
       if (StringUtils.isNotEmpty(authCredentials) && authCredentials.contains("Basic")) {
         final byte[] encodedUserPassword =
             authCredentials.replaceFirst("Basic" + " ", "").getBytes();
-        byte[] decodedBytes = Base64.decode(encodedUserPassword);
+        byte[] decodedBytes = Base64.getDecoder().decode(encodedUserPassword);
         bundleIdAndAppToken = new String(decodedBytes, "UTF-8");
         if (bundleIdAndAppToken.contains(":")) {
           final StringTokenizer tokenizer = new StringTokenizer(bundleIdAndAppToken, ":");
