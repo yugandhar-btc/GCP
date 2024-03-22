@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <TextView
+    <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/currentvalue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -48,17 +48,18 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <ImageView
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/minimage"
                 android:layout_width="30dp"
                 android:layout_height="30dp"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/mintitle"
+                android:visibility="gone"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/mindesc"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -75,19 +76,20 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <ImageView
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/maximage"
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:layout_gravity="right"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/maxtitle"
+                android:visibility="gone"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="right"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/maxdesc"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

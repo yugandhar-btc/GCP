@@ -8,7 +8,7 @@
     android:orientation="vertical"
     tools:context="com.harvard.usermodule.SignupProcessCompleteActivity">
 
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true"
@@ -66,6 +66,6 @@
                 android:text="@string/done"
                 android:textColor="@color/colorPrimary" />
         </RelativeLayout>
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 </LinearLayout>
 

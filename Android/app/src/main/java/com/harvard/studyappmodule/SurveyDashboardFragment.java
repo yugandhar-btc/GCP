@@ -30,11 +30,12 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.ConnectivityManager;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
@@ -59,18 +60,17 @@ import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.harvard.AppConfig;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.activitylistmodel.ActivitiesWS;
 import com.harvard.studyappmodule.activitylistmodel.ActivityListData;
 import com.harvard.studyappmodule.circularprogressbar.DonutProgress;
 import com.harvard.studyappmodule.custom.result.StepRecordCustom;
-import com.harvard.studyappmodule.events.GetActivityListEvent;
 import com.harvard.studyappmodule.studymodel.DashboardData;
 import com.harvard.studyappmodule.studymodel.ResponseInfoActiveTaskModel;
 import com.harvard.studyappmodule.studymodel.Statistics;
 import com.harvard.studyappmodule.surveyscheduler.SurveyScheduler;
 import com.harvard.studyappmodule.surveyscheduler.model.CompletionAdherence;
-import com.harvard.usermodule.webservicemodel.ActivityData;
 import com.harvard.usermodule.webservicemodel.Studies;
 import com.harvard.utils.AppController;
 import com.harvard.utils.CustomFirebaseAnalytics;
@@ -81,11 +81,21 @@ import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
 import com.harvard.webservicemodule.apihelper.ConnectionDetector;
 import com.harvard.webservicemodule.apihelper.HttpRequest;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ResponseServerInterface;
 import com.harvard.webservicemodule.apihelper.Responsemodel;
+import com.harvard.webservicemodule.apihelper.StudyDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.StudyDatastoreConfigEvent;
 import io.realm.Realm;
 import io.realm.RealmList;
 import io.realm.RealmResults;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import rx.Subscription;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.lang.reflect.Type;
@@ -98,12 +108,15 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 public class SurveyDashboardFragment extends Fragment
-    implements ApiCall.OnAsyncRequestComplete, NetworkChangeReceiver.NetworkChangeCallback {
+        implements ApiCall.OnAsyncRequestComplete, NetworkChangeReceiver.NetworkChangeCallback {
   private static final int DASHBOARD_INFO = 111;
   private Context context;
   private RelativeLayout backBtn;
@@ -175,101 +188,161 @@ public class SurveyDashboardFragment extends Fragment
   private DbServiceSubscriber dbServiceSubscriber;
   private Realm realm;
   private static final int PERMISSION_REQUEST_CODE = 2000;
+  private StudyDataStoreAPIInterface apiInterface;
+  private Subscription mSBNetworkSubscriptionl;
+  private ResponseServerInterface responseServerInterface;
 
-  @Override
-  public void onAttach(Context context) {
-    super.onAttach(context);
-    this.context = context;
-  }
+    @Override
+    public void onAttach(Context context) {
+        super.onAttach(context);
+        this.context = context;
 
-  @Override
-  public View onCreateView(
-      LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-    // Inflate the layout for this fragment
-    view = inflater.inflate(R.layout.fragment_survey_dashboard, container, false);
-    analyticsInstance = CustomFirebaseAnalytics.getInstance(context);
-    dbServiceSubscriber = new DbServiceSubscriber();
-    realm = AppController.getRealmobj(context);
-    initializeXmlId(view);
-    setFont();
-    setCurrentDateMonthYear();
-    // default for day settings
-    fromDayVal = setCurrentDay();
-    toDayVal = fromDayVal;
-    // first 2 digit set color
-    changeDateLabel.setText(setColorSpannbleString(fromDayVal, 2));
-    setColorForSelectedDayMonthYear(dayLayout);
-    bindEvents();
-    setStudyStatus();
-    setParticipationStatus();
-    getDashboardData();
-    nextDateLayout.setVisibility(View.INVISIBLE);
-    return view;
-  }
-
-  private void setStudyStatus() {
-    String status = ((SurveyActivity) context).getStatus();
-    studyStatus.setText(status);
-    if (status.equalsIgnoreCase("active")) {
-      studyStatus.setTextColor(context.getResources().getColor(R.color.bullet_green_color));
-    } else if (status.equalsIgnoreCase("closed")) {
-      studyStatus.setTextColor(context.getResources().getColor(R.color.red));
-    } else if (status.equalsIgnoreCase("paused")) {
-      studyStatus.setTextColor(context.getResources().getColor(R.color.rectangle_yellow));
+        if (this.context == null) {
+            this.context = getContext();
+        }
     }
-  }
 
-  private void setParticipationStatus() {
-    String participationStatusVal = ((SurveyActivity) context).getStudyStatus();
-    if (participationStatusVal != null) {
-      if (participationStatusVal.equalsIgnoreCase(StudyFragment.COMPLETED)) {
-        participationStatus.setText(R.string.completed);
-        participationStatus.setTextColor(
-            context.getResources().getColor(R.color.bullet_green_color));
-      } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.NOT_ELIGIBLE)) {
-        participationStatus.setText(R.string.not_eligible);
-        participationStatus.setTextColor(context.getResources().getColor(R.color.red));
-      } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.IN_PROGRESS)) {
-        participationStatus.setText(R.string.in_progress);
-        participationStatus.setTextColor(context.getResources().getColor(R.color.rectangle_yellow));
-      } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.YET_TO_JOIN)) {
-        participationStatus.setText(R.string.yet_to_join);
-        participationStatus.setTextColor(context.getResources().getColor(R.color.colorPrimary));
-      } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.WITHDRAWN)) {
-        participationStatus.setText(R.string.withdrawn);
-        participationStatus.setTextColor(context.getResources().getColor(R.color.colorSecondary));
-      } else {
-        participationStatus.setText(R.string.yet_to_join);
-        participationStatus.setTextColor(context.getResources().getColor(R.color.colorPrimary));
-      }
-    } else {
-      participationStatus.setText(R.string.yet_to_join);
-      participationStatus.setTextColor(context.getResources().getColor(R.color.colorPrimary));
+    @Override
+    public View onCreateView(
+            LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        // Inflate the layout for this fragment
+        view = inflater.inflate(R.layout.fragment_survey_dashboard, container, false);
+        analyticsInstance = CustomFirebaseAnalytics.getInstance(context);
+        dbServiceSubscriber = new DbServiceSubscriber();
+        realm = AppController.getRealmobj(context);
+      responseServerInterface = new ServiceManager()
+          .createService(ResponseServerInterface.class, UrlTypeConstants.ResponseDataStore);
+        initializeXmlId(view);
+        setFont();
+        setCurrentDateMonthYear();
+        // default for day settings
+        fromDayVal = setCurrentDay();
+        toDayVal = fromDayVal;
+        // first 2 digit set color
+        changeDateLabel.setText(setColorSpannbleString(fromDayVal, 2));
+        setColorForSelectedDayMonthYear(dayLayout);
+        bindEvents();
+        setStudyStatus();
+        setParticipationStatus();
+        getDashboardData();
+        nextDateLayout.setVisibility(View.INVISIBLE);
+        return view;
     }
+
+    private void setStudyStatus() {
+        String status = ((SurveyActivity) context).getStatus();
+        studyStatus.setText(status);
+        if (status.equalsIgnoreCase("active")) {
+            studyStatus.setTextColor(context.getResources().getColor(R.color.bullet_green_color));
+        } else if (status.equalsIgnoreCase("closed")) {
+            studyStatus.setTextColor(context.getResources().getColor(R.color.red));
+        } else if (status.equalsIgnoreCase("paused")) {
+            studyStatus.setTextColor(context.getResources().getColor(R.color.rectangle_yellow));
+        }
+    }
+
+    private void setParticipationStatus() {
+        String participationStatusVal = ((SurveyActivity) context).getStudyStatus();
+        if (participationStatusVal != null) {
+            if (participationStatusVal.equalsIgnoreCase(StudyFragment.COMPLETED)) {
+                participationStatus.setText(R.string.completed);
+                participationStatus.setTextColor(
+                        context.getResources().getColor(R.color.bullet_green_color));
+            } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.NOT_ELIGIBLE)) {
+                participationStatus.setText(R.string.not_eligible);
+                participationStatus.setTextColor(context.getResources().getColor(R.color.red));
+            } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.IN_PROGRESS)) {
+                participationStatus.setText(R.string.in_progress);
+                participationStatus.setTextColor(context.getResources().getColor(R.color.rectangle_yellow));
+            } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.YET_TO_JOIN)) {
+                participationStatus.setText(R.string.yet_to_join);
+                participationStatus.setTextColor(context.getResources().getColor(R.color.colorPrimary));
+            } else if (participationStatusVal.equalsIgnoreCase(StudyFragment.WITHDRAWN)) {
+                participationStatus.setText(R.string.withdrawn);
+                participationStatus.setTextColor(context.getResources().getColor(R.color.colorSecondary));
+            } else {
+                participationStatus.setText(R.string.yet_to_join);
+                participationStatus.setTextColor(context.getResources().getColor(R.color.colorPrimary));
+            }
+        } else {
+            participationStatus.setText(R.string.yet_to_join);
+            participationStatus.setTextColor(context.getResources().getColor(R.color.colorPrimary));
+        }
+    }
+
+    private void getDashboardData() {
+        AppController.getHelperProgressDialog().showProgress(context, "", "", false);
+//    GetActivityListEvent getActivityListEvent = new GetActivityListEvent();
+//    HashMap<String, String> header = new HashMap();
+//    String url = Urls.DASHBOARD_INFO + "?studyId=" + ((SurveyActivity) context).getStudyId();
+//    StudyDatastoreConfigEvent studyDatastoreConfigEvent =
+//            new StudyDatastoreConfigEvent(
+//                    "get",
+//                    url,
+//                    DASHBOARD_INFO,
+//                    context,
+//                    DashboardData.class,
+//                    null,
+//                    header,
+//                    null,
+//                    false,
+//                    this);
+//
+//    getActivityListEvent.setStudyDatastoreConfigEvent(studyDatastoreConfigEvent);
+//    StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
+//    studyModulePresenter.performGetActivityList(getActivityListEvent);
+    apiInterface = new ServiceManager().createService(StudyDataStoreAPIInterface.class, UrlTypeConstants.StudyDataStore);
+    mSBNetworkSubscriptionl = NetworkRequest.performAsyncRequest(apiInterface
+            .getStudyDashboard(((SurveyActivity) context).getStudyId()),
+        (data) -> {
+          setDashBoardData(data);
+        }, (error) -> {
+      int code = AppController.getErrorCode(error);
+      String errormsg = AppController.getErrorMessage(error);
+          if (code == 401) {
+            Toast.makeText(context, "session expired", Toast.LENGTH_SHORT).show();
+            AppController.getHelperSessionExpired(context, errormsg);
+          } else {
+            scrollView.setVisibility(View.VISIBLE);
+            dashboardData =
+                dbServiceSubscriber.getDashboardDataFromDB(
+                    ((SurveyActivity) context).getStudyId(), realm);
+            if (dashboardData != null) {
+              new ProcessData().execute();
+            } else {
+              AppController.getHelperProgressDialog().dismissDialog();
+              Toast.makeText(context, errormsg, Toast.LENGTH_SHORT).show();
+            }
+          }
+        });
   }
 
-  private void getDashboardData() {
-    AppController.getHelperProgressDialog().showProgress(context, "", "", false);
-    GetActivityListEvent getActivityListEvent = new GetActivityListEvent();
-    HashMap<String, String> header = new HashMap();
-    String url = Urls.DASHBOARD_INFO + "?studyId=" + ((SurveyActivity) context).getStudyId();
-    StudyDatastoreConfigEvent studyDatastoreConfigEvent =
-        new StudyDatastoreConfigEvent(
-            "get",
-            url,
-            DASHBOARD_INFO,
-            context,
-            DashboardData.class,
-            null,
-            header,
-            null,
-            false,
-            this);
+    private void setDashBoardData(DashboardData data) {
+        AppController.getHelperProgressDialog().dismissDialog();
+        if (data != null) {
+            dashboardData = data;
+            getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (dashboardData != null) {
+                        dashboardData.setStudyId(((SurveyActivity) context).getStudyId());
+                        if (dashboardData.getDashboard().getCharts().isEmpty()) {
+                            trendLayout.setVisibility(View.GONE);
+                        }
+                        scrollView.setVisibility(View.VISIBLE);
+                        dbServiceSubscriber.saveStudyDashboardToDB(context, dashboardData);
+                        new ProcessData().execute();
+                    } else {
+                        AppController.getHelperProgressDialog().dismissDialog();
+                        scrollView.setVisibility(View.VISIBLE);
+                        new ProcessData().execute();
+                        Toast.makeText(context, R.string.unable_to_parse, Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+        }
 
-    getActivityListEvent.setStudyDatastoreConfigEvent(studyDatastoreConfigEvent);
-    StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
-    studyModulePresenter.performGetActivityList(getActivityListEvent);
-  }
+    }
 
   private void initializeXmlId(View view) {
     backBtn = (RelativeLayout) view.findViewById(R.id.backBtn);
@@ -301,7 +374,7 @@ public class SurveyDashboardFragment extends Fragment
     studyStatusLabel = (AppCompatTextView) view.findViewById(R.id.mStudyStatusLabel);
     studyStatus = (AppCompatTextView) view.findViewById(R.id.mStudyStatus);
     participationStatusLabel =
-        (AppCompatTextView) view.findViewById(R.id.mParticipationStatusLabel);
+            (AppCompatTextView) view.findViewById(R.id.mParticipationStatusLabel);
     participationStatus = (AppCompatTextView) view.findViewById(R.id.mParticipationStatus);
     completionText1 = (AppCompatTextView) view.findViewById(R.id.mCompletionText1);
     completionPercentage = (AppCompatTextView) view.findViewById(R.id.mCompletionPercentage);
@@ -320,7 +393,7 @@ public class SurveyDashboardFragment extends Fragment
     AppCompatImageView backBtnimg = view.findViewById(R.id.backBtnimg);
     AppCompatImageView menubtnimg = view.findViewById(R.id.menubtnimg);
 
-    if (AppConfig.AppType.equalsIgnoreCase(getContext().getString(R.string.app_gateway))) {
+    if (AppConfig.AppType.equalsIgnoreCase(context.getString(R.string.app_gateway))) {
       backBtnimg.setVisibility(View.VISIBLE);
       menubtnimg.setVisibility(View.GONE);
     } else {
@@ -408,324 +481,353 @@ public class SurveyDashboardFragment extends Fragment
 
   private void bindEvents() {
     backBtn.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View v) {
-            if (AppConfig.AppType.equalsIgnoreCase(getContext().getString(R.string.app_gateway))) {
-              Bundle eventProperties = new Bundle();
-              eventProperties.putString(
-                  CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                  getContext().getString(R.string.survey_dashbord_home));
-              analyticsInstance.logEvent(
-                  CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-              Intent intent = new Intent(context, StudyActivity.class);
-              ComponentName cn = intent.getComponent();
-              Intent mainIntent = Intent.makeRestartActivityTask(cn);
-              context.startActivity(mainIntent);
-              ((Activity) context).finish();
-            } else {
-              ((SurveyActivity) context).openDrawer();
-            }
-          }
-        });
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View v) {
+                if (AppConfig.AppType.equalsIgnoreCase(context.getString(R.string.app_gateway))) {
+                  Bundle eventProperties = new Bundle();
+                  eventProperties.putString(
+                          CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                          getContext().getString(R.string.survey_dashbord_home));
+                  analyticsInstance.logEvent(
+                          CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                  Intent intent = new Intent(context, StudyActivity.class);
+                  ComponentName cn = intent.getComponent();
+                  Intent mainIntent = Intent.makeRestartActivityTask(cn);
+                  context.startActivity(mainIntent);
+                  ((Activity) context).finish();
+                } else {
+                  ((SurveyActivity) context).openDrawer();
+                }
+              }
+            });
 
     shareBtn.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getContext().getString(R.string.survey_dashbord_share));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            screenshotWritingPermission(view);
-          }
-        });
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getContext().getString(R.string.survey_dashbord_share));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                screenshotWritingPermission(view);
+              }
+            });
 
     dayLayout.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getContext().getString(R.string.survey_dashbord_day));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            if (!dateType.equalsIgnoreCase(DAY)) {
-              nextDateLayout.setVisibility(View.INVISIBLE);
-              setDay();
-              addViewStatisticsValuesRefresh();
-            }
-          }
-        });
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getContext().getString(R.string.survey_dashbord_day));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                if (!dateType.equalsIgnoreCase(DAY)) {
+                  nextDateLayout.setVisibility(View.INVISIBLE);
+                  setDay();
+                  addViewStatisticsValuesRefresh();
+                }
+              }
+            });
 
     weekLayout.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getContext().getString(R.string.survey_dashbord_week));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            if (!dateType.equalsIgnoreCase(WEEK)) {
-              nextDateLayout.setVisibility(View.INVISIBLE);
-              setWeek();
-              addViewStatisticsValuesRefresh();
-            }
-          }
-        });
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getContext().getString(R.string.survey_dashbord_week));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                if (!dateType.equalsIgnoreCase(WEEK)) {
+                  nextDateLayout.setVisibility(View.INVISIBLE);
+                  setWeek();
+                  addViewStatisticsValuesRefresh();
+                }
+              }
+            });
     monthLayout.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getContext().getString(R.string.survey_dashbord_month));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            try {
-              if (!dateType.equalsIgnoreCase(MONTH)) {
-                nextDateLayout.setVisibility(View.INVISIBLE);
-                setMonth();
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getContext().getString(R.string.survey_dashbord_month));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                try {
+                  if (!dateType.equalsIgnoreCase(MONTH)) {
+                    nextDateLayout.setVisibility(View.INVISIBLE);
+                    setMonth();
+                    addViewStatisticsValuesRefresh();
+                  }
+                } catch (Exception e) {
+                  Logger.log(e);
+                }
+              }
+            });
+    previousDateLayout.setOnClickListener(
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getContext().getString(R.string.survey_dashbord_change_date_left));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                nextDateLayout.setVisibility(View.VISIBLE);
+                if (dateType.equalsIgnoreCase(DAY)) {
+                  try {
+                    SimpleDateFormat simpleDateFormat = AppController.getDateFormatForApi();
+                    Date selectedStartDAte = simpleDateFormat.parse(fromDayVal);
+                    Date selectedEndDate = simpleDateFormat.parse(toDayVal);
+                    Calendar calendarStart = Calendar.getInstance();
+                    calendarStart.setTime(selectedStartDAte);
+                    calendarStart.add(Calendar.DATE, -1);
+                    Calendar calendarEnd = Calendar.getInstance();
+                    calendarEnd.setTime(selectedEndDate);
+                    calendarEnd.add(Calendar.DATE, -1);
+                    fromDayVal = simpleDateFormat.format(calendarStart.getTime());
+                    toDayVal = simpleDateFormat.format(calendarEnd.getTime());
+                    SimpleDateFormat dateFormatForDashboardCurrentDayOut =
+                            AppController.getDateFormatForDashboardAndChartCurrentDayOut();
+                    changeDateLabel.setText(
+                            dateFormatForDashboardCurrentDayOut.format(calendarStart.getTime()));
+
+                  } catch (ParseException e) {
+                    Logger.log(e);
+                  }
+                } else if (dateType.equalsIgnoreCase(WEEK)) {
+                  try {
+                    SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
+                    Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
+                    Date selectedEndDate = dateFormatForApi.parse(toDayVal);
+                    Calendar calendarStart = Calendar.getInstance();
+                    calendarStart.setTime(selectedStartDAte);
+                    calendarStart.add(Calendar.DATE, -7);
+                    Calendar calendarEnd = Calendar.getInstance();
+                    calendarEnd.setTime(selectedEndDate);
+                    calendarEnd.add(Calendar.DATE, -7);
+                    fromDayVal = dateFormatForApi.format(calendarStart.getTime());
+                    toDayVal = dateFormatForApi.format(calendarEnd.getTime());
+                    SimpleDateFormat simpleDateFormat =
+                            AppController.getDateFormatForDashboardAndChartCurrentDayOut();
+                    changeDateLabel.setText(
+                            simpleDateFormat.format(calendarStart.getTime())
+                                    + " - "
+                                    + simpleDateFormat.format(calendarEnd.getTime()));
+                  } catch (ParseException e) {
+                    Logger.log(e);
+                  }
+                } else if (dateType.equalsIgnoreCase(MONTH)) {
+                  try {
+                    SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
+                    Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
+                    Date selectedEndDate = dateFormatForApi.parse(toDayVal);
+                    Calendar calendarStart = Calendar.getInstance();
+                    calendarStart.setTime(selectedStartDAte);
+                    calendarStart.add(Calendar.MONTH, -1);
+                    Calendar calendarEnd = Calendar.getInstance();
+                    calendarEnd.setTime(selectedEndDate);
+                    calendarEnd.add(Calendar.MONTH, -1);
+                    fromDayVal = dateFormatForApi.format(calendarStart.getTime());
+                    toDayVal = dateFormatForApi.format(calendarEnd.getTime());
+                    SimpleDateFormat dateFormatForChartAndStat =
+                            AppController.getDateFormatForChartAndStat();
+                    changeDateLabel.setText(dateFormatForChartAndStat.format(calendarStart.getTime()));
+
+                  } catch (ParseException e) {
+                    Logger.log(e);
+                  }
+                }
                 addViewStatisticsValuesRefresh();
               }
-            } catch (Exception e) {
-              Logger.log(e);
-            }
-          }
-        });
-    previousDateLayout.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getContext().getString(R.string.survey_dashbord_change_date_left));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            nextDateLayout.setVisibility(View.VISIBLE);
-            if (dateType.equalsIgnoreCase(DAY)) {
-              try {
-                SimpleDateFormat simpleDateFormat = AppController.getDateFormatForApi();
-                Date selectedStartDAte = simpleDateFormat.parse(fromDayVal);
-                Date selectedEndDate = simpleDateFormat.parse(toDayVal);
-                Calendar calendarStart = Calendar.getInstance();
-                calendarStart.setTime(selectedStartDAte);
-                calendarStart.add(Calendar.DATE, -1);
-                Calendar calendarEnd = Calendar.getInstance();
-                calendarEnd.setTime(selectedEndDate);
-                calendarEnd.add(Calendar.DATE, -1);
-                fromDayVal = simpleDateFormat.format(calendarStart.getTime());
-                toDayVal = simpleDateFormat.format(calendarEnd.getTime());
-                SimpleDateFormat dateFormatForDashboardCurrentDayOut =
-                    AppController.getDateFormatForDashboardAndChartCurrentDayOut();
-                changeDateLabel.setText(
-                    dateFormatForDashboardCurrentDayOut.format(calendarStart.getTime()));
-
-              } catch (ParseException e) {
-                Logger.log(e);
-              }
-            } else if (dateType.equalsIgnoreCase(WEEK)) {
-              try {
-                SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
-                Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
-                Date selectedEndDate = dateFormatForApi.parse(toDayVal);
-                Calendar calendarStart = Calendar.getInstance();
-                calendarStart.setTime(selectedStartDAte);
-                calendarStart.add(Calendar.DATE, -7);
-                Calendar calendarEnd = Calendar.getInstance();
-                calendarEnd.setTime(selectedEndDate);
-                calendarEnd.add(Calendar.DATE, -7);
-                fromDayVal = dateFormatForApi.format(calendarStart.getTime());
-                toDayVal = dateFormatForApi.format(calendarEnd.getTime());
-                SimpleDateFormat simpleDateFormat =
-                    AppController.getDateFormatForDashboardAndChartCurrentDayOut();
-                changeDateLabel.setText(
-                    simpleDateFormat.format(calendarStart.getTime())
-                        + " - "
-                        + simpleDateFormat.format(calendarEnd.getTime()));
-              } catch (ParseException e) {
-                Logger.log(e);
-              }
-            } else if (dateType.equalsIgnoreCase(MONTH)) {
-              try {
-                SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
-                Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
-                Date selectedEndDate = dateFormatForApi.parse(toDayVal);
-                Calendar calendarStart = Calendar.getInstance();
-                calendarStart.setTime(selectedStartDAte);
-                calendarStart.add(Calendar.MONTH, -1);
-                Calendar calendarEnd = Calendar.getInstance();
-                calendarEnd.setTime(selectedEndDate);
-                calendarEnd.add(Calendar.MONTH, -1);
-                fromDayVal = dateFormatForApi.format(calendarStart.getTime());
-                toDayVal = dateFormatForApi.format(calendarEnd.getTime());
-                SimpleDateFormat dateFormatForChartAndStat =
-                    AppController.getDateFormatForChartAndStat();
-                changeDateLabel.setText(dateFormatForChartAndStat.format(calendarStart.getTime()));
-
-              } catch (ParseException e) {
-                Logger.log(e);
-              }
-            }
-            addViewStatisticsValuesRefresh();
-          }
-        });
+            });
     nextDateLayout.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getContext().getString(R.string.survey_dashbord_change_date_right));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            if (dateType.equalsIgnoreCase(DAY)) {
-              try {
-                SimpleDateFormat simpleDateFormat =
-                    AppController.getDateFormatForDashboardAndChartCurrentDayOut();
-                SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
-                Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
-                Date selectedEndDate = dateFormatForApi.parse(toDayVal);
-                Calendar calendarStart = Calendar.getInstance();
-                calendarStart.setTime(selectedStartDAte);
-                calendarStart.add(Calendar.DATE, 1);
-                Calendar calendarEnd = Calendar.getInstance();
-                calendarEnd.setTime(selectedEndDate);
-                calendarEnd.add(Calendar.DATE, 1);
-                if (!calendarStart.getTime().after(new Date())) {
-                  fromDayVal = dateFormatForApi.format(calendarStart.getTime());
-                  toDayVal = dateFormatForApi.format(calendarEnd.getTime());
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getContext().getString(R.string.survey_dashbord_change_date_right));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                if (dateType.equalsIgnoreCase(DAY)) {
+                  try {
+                    SimpleDateFormat simpleDateFormat =
+                            AppController.getDateFormatForDashboardAndChartCurrentDayOut();
+                    SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
+                    Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
+                    Date selectedEndDate = dateFormatForApi.parse(toDayVal);
+                    Calendar calendarStart = Calendar.getInstance();
+                    calendarStart.setTime(selectedStartDAte);
+                    calendarStart.add(Calendar.DATE, 1);
+                    Calendar calendarEnd = Calendar.getInstance();
+                    calendarEnd.setTime(selectedEndDate);
+                    calendarEnd.add(Calendar.DATE, 1);
+                    if (!calendarStart.getTime().after(new Date())) {
+                      fromDayVal = dateFormatForApi.format(calendarStart.getTime());
+                      toDayVal = dateFormatForApi.format(calendarEnd.getTime());
 
-                  changeDateLabel.setText(simpleDateFormat.format(calendarStart.getTime()));
-                  addViewStatisticsValuesRefresh();
+                      changeDateLabel.setText(simpleDateFormat.format(calendarStart.getTime()));
+                      addViewStatisticsValuesRefresh();
 
-                  calendarStart.add(Calendar.DATE, 1);
-                  if (calendarStart.getTime().after(new Date())) {
-                    nextDateLayout.setVisibility(View.INVISIBLE);
+                      calendarStart.add(Calendar.DATE, 1);
+                      if (calendarStart.getTime().after(new Date())) {
+                        nextDateLayout.setVisibility(View.INVISIBLE);
+                      }
+                    }
+                  } catch (ParseException e) {
+                    Logger.log(e);
+                  }
+                } else if (dateType.equalsIgnoreCase(WEEK)) {
+                  try {
+                    SimpleDateFormat simpleDateFormat =
+                            AppController.getDateFormatForDashboardAndChartCurrentDayOut();
+                    SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
+                    Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
+                    Date selectedEndDate = dateFormatForApi.parse(toDayVal);
+                    Calendar calendarStart = Calendar.getInstance();
+                    calendarStart.setTime(selectedStartDAte);
+                    calendarStart.add(Calendar.DATE, 7);
+                    Calendar calendarEnd = Calendar.getInstance();
+                    calendarEnd.setTime(selectedEndDate);
+                    calendarEnd.add(Calendar.DATE, 7);
+                    if (!calendarStart.getTime().after(new Date())) {
+                      fromDayVal = dateFormatForApi.format(calendarStart.getTime());
+                      toDayVal = dateFormatForApi.format(calendarEnd.getTime());
+
+                      if (calendarEnd.getTime().after(new Date())) {
+                        changeDateLabel.setText(
+                                simpleDateFormat.format(calendarStart.getTime())
+                                        + " - "
+                                        + simpleDateFormat.format(new Date()));
+                      } else {
+                        changeDateLabel.setText(
+                                simpleDateFormat.format(calendarStart.getTime())
+                                        + " - "
+                                        + simpleDateFormat.format(calendarEnd.getTime()));
+                      }
+                      addViewStatisticsValuesRefresh();
+
+                      calendarStart.add(Calendar.DATE, 7);
+                      if (calendarStart.getTime().after(new Date())) {
+                        nextDateLayout.setVisibility(View.INVISIBLE);
+                      }
+                    }
+                  } catch (ParseException e) {
+                    Logger.log(e);
+                  }
+                } else if (dateType.equalsIgnoreCase(MONTH)) {
+                  try {
+                    SimpleDateFormat simpleDateFormat = AppController.getDateFormatForApi();
+                    SimpleDateFormat dateFormatForChartAndStat =
+                            AppController.getDateFormatForChartAndStat();
+                    Date selectedStartDAte = simpleDateFormat.parse(fromDayVal);
+                    Date selectedEndDate = simpleDateFormat.parse(toDayVal);
+                    Calendar calendarStart = Calendar.getInstance();
+                    calendarStart.setTime(selectedStartDAte);
+                    calendarStart.add(Calendar.MONTH, 1);
+                    Calendar calendarEnd = Calendar.getInstance();
+                    calendarEnd.setTime(selectedEndDate);
+                    calendarEnd.add(Calendar.MONTH, 1);
+                    if (!calendarStart.getTime().after(new Date())) {
+                      fromDayVal = simpleDateFormat.format(calendarStart.getTime());
+                      toDayVal = simpleDateFormat.format(calendarEnd.getTime());
+
+                      changeDateLabel.setText(
+                              dateFormatForChartAndStat.format(calendarStart.getTime()));
+                      addViewStatisticsValuesRefresh();
+
+                      calendarStart.add(Calendar.MONTH, 1);
+                      if (calendarStart.getTime().after(new Date())) {
+                        nextDateLayout.setVisibility(View.INVISIBLE);
+                      }
+                    }
+                  } catch (ParseException e) {
+                    Logger.log(e);
                   }
                 }
-              } catch (ParseException e) {
-                Logger.log(e);
               }
-            } else if (dateType.equalsIgnoreCase(WEEK)) {
-              try {
-                SimpleDateFormat simpleDateFormat =
-                    AppController.getDateFormatForDashboardAndChartCurrentDayOut();
-                SimpleDateFormat dateFormatForApi = AppController.getDateFormatForApi();
-                Date selectedStartDAte = dateFormatForApi.parse(fromDayVal);
-                Date selectedEndDate = dateFormatForApi.parse(toDayVal);
-                Calendar calendarStart = Calendar.getInstance();
-                calendarStart.setTime(selectedStartDAte);
-                calendarStart.add(Calendar.DATE, 7);
-                Calendar calendarEnd = Calendar.getInstance();
-                calendarEnd.setTime(selectedEndDate);
-                calendarEnd.add(Calendar.DATE, 7);
-                if (!calendarStart.getTime().after(new Date())) {
-                  fromDayVal = dateFormatForApi.format(calendarStart.getTime());
-                  toDayVal = dateFormatForApi.format(calendarEnd.getTime());
-
-                  if (calendarEnd.getTime().after(new Date())) {
-                    changeDateLabel.setText(
-                        simpleDateFormat.format(calendarStart.getTime())
-                            + " - "
-                            + simpleDateFormat.format(new Date()));
-                  } else {
-                    changeDateLabel.setText(
-                        simpleDateFormat.format(calendarStart.getTime())
-                            + " - "
-                            + simpleDateFormat.format(calendarEnd.getTime()));
-                  }
-                  addViewStatisticsValuesRefresh();
-
-                  calendarStart.add(Calendar.DATE, 7);
-                  if (calendarStart.getTime().after(new Date())) {
-                    nextDateLayout.setVisibility(View.INVISIBLE);
-                  }
-                }
-              } catch (ParseException e) {
-                Logger.log(e);
-              }
-            } else if (dateType.equalsIgnoreCase(MONTH)) {
-              try {
-                SimpleDateFormat simpleDateFormat = AppController.getDateFormatForApi();
-                SimpleDateFormat dateFormatForChartAndStat =
-                    AppController.getDateFormatForChartAndStat();
-                Date selectedStartDAte = simpleDateFormat.parse(fromDayVal);
-                Date selectedEndDate = simpleDateFormat.parse(toDayVal);
-                Calendar calendarStart = Calendar.getInstance();
-                calendarStart.setTime(selectedStartDAte);
-                calendarStart.add(Calendar.MONTH, 1);
-                Calendar calendarEnd = Calendar.getInstance();
-                calendarEnd.setTime(selectedEndDate);
-                calendarEnd.add(Calendar.MONTH, 1);
-                if (!calendarStart.getTime().after(new Date())) {
-                  fromDayVal = simpleDateFormat.format(calendarStart.getTime());
-                  toDayVal = simpleDateFormat.format(calendarEnd.getTime());
-
-                  changeDateLabel.setText(
-                      dateFormatForChartAndStat.format(calendarStart.getTime()));
-                  addViewStatisticsValuesRefresh();
-
-                  calendarStart.add(Calendar.MONTH, 1);
-                  if (calendarStart.getTime().after(new Date())) {
-                    nextDateLayout.setVisibility(View.INVISIBLE);
-                  }
-                }
-              } catch (ParseException e) {
-                Logger.log(e);
-              }
-            }
-          }
-        });
+            });
     trendLayout.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getContext().getString(R.string.trends));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            if (dashboardData != null && dashboardData.getDashboard().getCharts().size() > 0) {
-              Intent intent = new Intent(context, ChartActivity.class);
-              intent.putExtra("studyId", ((SurveyActivity) context).getStudyId());
-              intent.putExtra("studyName", ((SurveyActivity) context).getTitle1());
-              startActivity(intent);
-            } else {
-              Toast.makeText(
-                      context,
-                      getContext().getResources().getString(R.string.no_charts_display),
-                      Toast.LENGTH_SHORT)
-                  .show();
-            }
-          }
-        });
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getContext().getString(R.string.trends));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                if (dashboardData != null && dashboardData.getDashboard().getCharts().size() > 0) {
+                  Intent intent = new Intent(context, ChartActivity.class);
+                  intent.putExtra("studyId", ((SurveyActivity) context).getStudyId());
+                  intent.putExtra("studyName", ((SurveyActivity) context).getTitle1());
+                  startActivity(intent);
+                } else {
+                  Toast.makeText(
+                                  context,
+                                  getContext().getResources().getString(R.string.no_charts_display),
+                                  Toast.LENGTH_SHORT)
+                          .show();
+                }
+              }
+            });
   }
 
   private void screenshotWritingPermission(View view) {
     // checking the permissions
-    if ((ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)
-        || (ActivityCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)) {
-      String[] permission =
-          new String[] {
-            Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
-          };
-      if (!hasPermissions(permission)) {
-        ActivityCompat.requestPermissions((Activity) context, permission, PERMISSION_REQUEST_CODE);
-      } else {
-        // sharing pdf creating
+    if(Build.VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+      if((ActivityCompat.checkSelfPermission(
+          context,Manifest.permission.READ_MEDIA_AUDIO)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          context,Manifest.permission.READ_MEDIA_IMAGES)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          context,Manifest.permission.READ_MEDIA_VIDEO)
+          != PackageManager.PERMISSION_GRANTED)) {
+        String[] permission =
+            new String[]{
+                Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            };
+        if (!hasPermissions(permission)) {
+          ActivityCompat.requestPermissions(
+              (Activity) context, permission, PERMISSION_REQUEST_CODE);
+        } else {
+          // sharing pdf creating
+          shareFunctionality(view);
+        }
+      }else {
         shareFunctionality(view);
+      }
+    } else if(Build.VERSION.SDK_INT < VERSION_CODES.TIRAMISU) {
+      if ((ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+          != PackageManager.PERMISSION_GRANTED)) {
+        String[] permission =
+            new String[]{
+                Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
+            };
+        if (!hasPermissions(permission)) {
+          ActivityCompat.requestPermissions((Activity) context, permission, PERMISSION_REQUEST_CODE);
+        } else {
+          // sharing pdf creating
+          shareFunctionality(view);
+        }
+      }else {
+          shareFunctionality(view);
       }
     } else {
       // sharing pdf creating
@@ -737,7 +839,7 @@ public class SurveyDashboardFragment extends Fragment
     if (android.os.Build.VERSION.SDK_INT >= VERSION_CODES.M && permissions != null) {
       for (String permission : permissions) {
         if (ActivityCompat.checkSelfPermission(context, permission)
-            != PackageManager.PERMISSION_GRANTED) {
+                != PackageManager.PERMISSION_GRANTED) {
           return false;
         }
       }
@@ -747,16 +849,16 @@ public class SurveyDashboardFragment extends Fragment
 
   @Override
   public void onRequestPermissionsResult(
-      int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+          int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
     if (requestCode == PERMISSION_REQUEST_CODE) {
       if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_DENIED) {
         Toast.makeText(
-                context,
-                getContext()
-                    .getResources()
-                    .getString(R.string.permission_enable_message_screenshot),
-                Toast.LENGTH_LONG)
-            .show();
+                        context,
+                        getContext()
+                                .getResources()
+                                .getString(R.string.permission_enable_message_screenshot),
+                        Toast.LENGTH_LONG)
+                .show();
       } else {
         shareFunctionality(view);
       }
@@ -776,9 +878,9 @@ public class SurveyDashboardFragment extends Fragment
       root = Environment.getExternalStorageDirectory().getAbsolutePath();
     } else {
       root =
-          getActivity()
-              .getExternalFilesDir(getContext().getString(R.string.app_name))
-              .getAbsolutePath();
+              getActivity()
+                      .getExternalFilesDir(getContext().getString(R.string.app_name))
+                      .getAbsolutePath();
     }
     File dir = new File(root + "/Android/FDA/Screenshot");
     dir.mkdirs();
@@ -804,8 +906,8 @@ public class SurveyDashboardFragment extends Fragment
     shareIntent.putExtra(Intent.EXTRA_SUBJECT, subject);
     shareIntent.setType("text/plain");
     Uri fileUri =
-        FileProvider.getUriForFile(
-            context, getContext().getString(R.string.FileProvider_authorities), file);
+            FileProvider.getUriForFile(
+                    context, getContext().getString(R.string.FileProvider_authorities), file);
     shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
     shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
     startActivity(shareIntent);
@@ -816,9 +918,9 @@ public class SurveyDashboardFragment extends Fragment
       int month = currentMonth + 1;
       String originDate = currentDay + " " + month + " " + currentYear;
       SimpleDateFormat dateFormatForDashboardCurrentDay =
-          AppController.getDateFormatForDashboardCurrentDay();
+              AppController.getDateFormatForDashboardCurrentDay();
       SimpleDateFormat formatOut = AppController.getDateFormatForDashboardAndChartCurrentDayOut();
-      SimpleDateFormat simpleDateFormat = AppController.getDateFormatForApi();
+       SimpleDateFormat simpleDateFormat = AppController.getDateFormatForApi();
       Calendar calendar = Calendar.getInstance();
       calendar.setTime(dateFormatForDashboardCurrentDay.parse(originDate));
       String newDate = formatOut.format(calendar.getTime());
@@ -832,10 +934,10 @@ public class SurveyDashboardFragment extends Fragment
   private Spannable setColorSpannbleString(String str, int endVal) {
     Spannable wordtoSpan = new SpannableString(str);
     wordtoSpan.setSpan(
-        new ForegroundColorSpan(getContext().getResources().getColor(R.color.colorPrimary)),
-        0,
-        endVal,
-        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            new ForegroundColorSpan(getContext().getResources().getColor(R.color.colorPrimary)),
+            0,
+            endVal,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
     return wordtoSpan;
   }
 
@@ -846,34 +948,34 @@ public class SurveyDashboardFragment extends Fragment
       setDay();
       for (int i = 0; i < dashboardData.getDashboard().getStatistics().size(); i++) {
         RelativeLayout activitiesLayout =
-            (RelativeLayout)
-                view.inflate(getActivity(), R.layout.content_survey_dashboard_statistics, null);
+                (RelativeLayout)
+                        view.inflate(getActivity(), R.layout.content_survey_dashboard_statistics, null);
         addViewStatisticsInitializeXmlId(activitiesLayout);
         addViewStatisticsSetFont();
         addViewStatisticsSetText(
-            dashboardData.getDashboard().getStatistics().get(i), activitiesLayout);
+                dashboardData.getDashboard().getStatistics().get(i), activitiesLayout);
         totalStaticsLayout.addView(activitiesLayout);
       }
     } else {
       setWeekUnSelected();
       drawableImageColorChange();
-      changeDateLabel.setText(getContext().getResources().getString(R.string.date_range));
+      changeDateLabel.setText(context.getResources().getString(R.string.date_range));
       for (int i = 0; i < 3; i++) {
         RelativeLayout activitiesLayout =
-            (RelativeLayout)
-                view.inflate(getActivity(), R.layout.content_survey_dashboard_statistics, null);
+                (RelativeLayout)
+                        view.inflate(context, R.layout.content_survey_dashboard_statistics, null);
         RelativeLayout rel = (RelativeLayout) activitiesLayout.findViewById(R.id.mRectBoxLayout);
-        rel.setBackground(getContext().getResources().getDrawable(R.color.colorSecondaryBg));
+        rel.setBackground(context.getResources().getDrawable(R.color.colorSecondaryBg));
         totalStaticsLayout.addView(activitiesLayout);
       }
       disableHorizontalView(middleView);
       scrollViewHor.setOnTouchListener(
-          new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-              return true;
-            }
-          });
+              new View.OnTouchListener() {
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                  return true;
+                }
+              });
       noStatsAvailable.setVisibility(View.VISIBLE);
     }
     AppController.getHelperProgressDialog().dismissDialog();
@@ -881,14 +983,14 @@ public class SurveyDashboardFragment extends Fragment
 
   private void setWeekUnSelected() {
     try {
-      weekLayout.setBackground(getContext().getResources().getDrawable(R.drawable.blue_radius));
-      weekLabel.setTextColor(getContext().getResources().getColor(R.color.colorSecondary));
+      weekLayout.setBackground(context.getResources().getDrawable(R.drawable.blue_radius));
+      weekLabel.setTextColor(context.getResources().getColor(R.color.colorSecondary));
       GradientDrawable layoutBgShape = (GradientDrawable) weekLayout.getBackground();
-      layoutBgShape.setColor(getContext().getResources().getColor(R.color.colorSecondaryBg));
+      layoutBgShape.setColor(context.getResources().getColor(R.color.colorSecondaryBg));
       dayLayout.setBackgroundResource(0);
       monthLayout.setBackgroundResource(0);
-      dayLabel.setTextColor(getContext().getResources().getColor(R.color.colorSecondary));
-      monthLabel.setTextColor(getContext().getResources().getColor(R.color.colorSecondary));
+      dayLabel.setTextColor(context.getResources().getColor(R.color.colorSecondary));
+      monthLabel.setTextColor(context.getResources().getColor(R.color.colorSecondary));
     } catch (Resources.NotFoundException e) {
       Logger.log(e);
     }
@@ -899,12 +1001,12 @@ public class SurveyDashboardFragment extends Fragment
       Resources res = getResources();
       final Drawable drawableRight = res.getDrawable(R.drawable.arrow2_right);
       drawableRight.setColorFilter(
-          getContext().getResources().getColor(R.color.colorSecondary), PorterDuff.Mode.SRC_ATOP);
+              context.getResources().getColor(R.color.colorSecondary), PorterDuff.Mode.SRC_ATOP);
       rightArrow.setBackgroundDrawable(drawableRight);
 
       final Drawable drawableLeft = res.getDrawable(R.drawable.arrow2_left);
       drawableLeft.setColorFilter(
-          getContext().getResources().getColor(R.color.colorSecondary), PorterDuff.Mode.SRC_ATOP);
+              context.getResources().getColor(R.color.colorSecondary), PorterDuff.Mode.SRC_ATOP);
       previousArrow.setBackgroundDrawable(drawableLeft);
 
     } catch (Exception e) {
@@ -930,29 +1032,29 @@ public class SurveyDashboardFragment extends Fragment
       if (dashboardData.getDashboard().getStatistics().size() > 0) {
         for (int i = 0; i < dashboardData.getDashboard().getStatistics().size(); i++) {
           addViewStatisticsSetText(
-              dashboardData.getDashboard().getStatistics().get(i),
-              totalStaticsLayout.getChildAt(i));
+                  dashboardData.getDashboard().getStatistics().get(i),
+                  totalStaticsLayout.getChildAt(i));
         }
       } else {
         setWeekUnSelected();
         drawableImageColorChange();
-        changeDateLabel.setText(getContext().getResources().getString(R.string.date_range));
+        changeDateLabel.setText(context.getResources().getString(R.string.date_range));
         for (int i = 0; i < 3; i++) {
           RelativeLayout activitiesLayout =
-              (RelativeLayout)
-                  view.inflate(getActivity(), R.layout.content_survey_dashboard_statistics, null);
+                  (RelativeLayout)
+                          view.inflate(getActivity(), R.layout.content_survey_dashboard_statistics, null);
           RelativeLayout rel = (RelativeLayout) activitiesLayout.findViewById(R.id.mRectBoxLayout);
           rel.setBackground(getContext().getResources().getDrawable(R.color.colorSecondaryBg));
           totalStaticsLayout.addView(activitiesLayout);
         }
         disableHorizontalView(middleView);
         scrollViewHor.setOnTouchListener(
-            new View.OnTouchListener() {
-              @Override
-              public boolean onTouch(View v, MotionEvent event) {
-                return true;
-              }
-            });
+                new View.OnTouchListener() {
+                  @Override
+                  public boolean onTouch(View v, MotionEvent event) {
+                    return true;
+                  }
+                });
         noStatsAvailable.setVisibility(View.VISIBLE);
       }
     }
@@ -976,34 +1078,34 @@ public class SurveyDashboardFragment extends Fragment
     switch (statistics.getStatType()) {
       case "Activity":
         statsIcon.setBackground(
-            getContext().getResources().getDrawable(R.drawable.stat_icn_activity));
+                getContext().getResources().getDrawable(R.drawable.stat_icn_activity));
         break;
       case "Sleep":
         statsIcon.setBackground(getContext().getResources().getDrawable(R.drawable.stat_icn_sleep));
         break;
       case "Weight":
         statsIcon.setBackground(
-            getContext().getResources().getDrawable(R.drawable.stat_icn_weight));
+                getContext().getResources().getDrawable(R.drawable.stat_icn_weight));
         break;
       case "Heart Rate":
         statsIcon.setBackground(
-            getContext().getResources().getDrawable(R.drawable.stat_icn_heart_rate));
+                getContext().getResources().getDrawable(R.drawable.stat_icn_heart_rate));
         break;
       case "Nutrition":
         statsIcon.setBackground(
-            getContext().getResources().getDrawable(R.drawable.stat_icn_nutrition));
+                getContext().getResources().getDrawable(R.drawable.stat_icn_nutrition));
         break;
       case "Blood Glucose":
         statsIcon.setBackground(
-            getContext().getResources().getDrawable(R.drawable.stat_icn_glucose));
+                getContext().getResources().getDrawable(R.drawable.stat_icn_glucose));
         break;
       case "Active Task":
         statsIcon.setBackground(
-            getContext().getResources().getDrawable(R.drawable.stat_icn_active_task));
+                getContext().getResources().getDrawable(R.drawable.stat_icn_active_task));
         break;
       case "Baby Kicks":
         statsIcon.setBackground(
-            getContext().getResources().getDrawable(R.drawable.stat_icn_baby_kicks));
+                getContext().getResources().getDrawable(R.drawable.stat_icn_baby_kicks));
         break;
       case "Other":
         statsIcon.setBackground(getContext().getResources().getDrawable(R.drawable.stat_icn_other));
@@ -1011,7 +1113,7 @@ public class SurveyDashboardFragment extends Fragment
     }
 
     AppCompatTextView totalHoursSleep =
-        (AppCompatTextView) view.findViewById(R.id.mTotalHoursSleep);
+            (AppCompatTextView) view.findViewById(R.id.mTotalHoursSleep);
 
     AppCompatTextView unit = (AppCompatTextView) view.findViewById(R.id.mUnit);
     totalHoursSleep.setText(statistics.getDisplayName());
@@ -1020,14 +1122,14 @@ public class SurveyDashboardFragment extends Fragment
     RealmResults<StepRecordCustom> stepRecordCustomList = null;
     try {
       stepRecordCustomList =
-          dbServiceSubscriber.getResultForStat(
-              ((SurveyActivity) context).getStudyId()
-                  + "_STUDYID_"
-                  + statistics.getDataSource().getActivity().getActivityId(),
-              statistics.getDataSource().getKey(),
-              simpleDateFormat.parse(fromDayVal),
-              simpleDateFormat.parse(toDayVal),
-              realm);
+              dbServiceSubscriber.getResultForStat(
+                      ((SurveyActivity) context).getStudyId()
+                              + "_STUDYID_"
+                              + statistics.getDataSource().getActivity().getActivityId(),
+                      statistics.getDataSource().getKey(),
+                      simpleDateFormat.parse(fromDayVal),
+                      simpleDateFormat.parse(toDayVal),
+                      realm);
     } catch (ParseException e) {
       Logger.log(e);
     }
@@ -1072,7 +1174,7 @@ public class SurveyDashboardFragment extends Fragment
       result = String.format("%.2f", Double.parseDouble(result));
     }
     AppCompatTextView totalHoursSleepVal =
-        (AppCompatTextView) view.findViewById(R.id.mTotalHoursSleepVal);
+            (AppCompatTextView) view.findViewById(R.id.mTotalHoursSleepVal);
     totalHoursSleepVal.setText(result);
   }
 
@@ -1119,11 +1221,12 @@ public class SurveyDashboardFragment extends Fragment
       } else {
         scrollView.setVisibility(View.VISIBLE);
         dashboardData =
-            dbServiceSubscriber.getDashboardDataFromDB(
-                ((SurveyActivity) context).getStudyId(), realm);
+                dbServiceSubscriber.getDashboardDataFromDB(
+                        ((SurveyActivity) context).getStudyId(), realm);
         if (dashboardData != null) {
           new ProcessData().execute();
         } else {
+          AppController.getHelperProgressDialog().dismissDialog();
           Toast.makeText(context, errormsg, Toast.LENGTH_SHORT).show();
         }
       }
@@ -1141,147 +1244,294 @@ public class SurveyDashboardFragment extends Fragment
     }
   }
 
-  private class ProcessData extends AsyncTask<String, Void, String> {
+  private class ProcessData
+//      extends AsyncTask<String, Void, String>
+  {
     CompletionAdherence completionAdherenceCalc;
+    Executor executor = Executors.newSingleThreadExecutor();
+    Handler handler = new Handler(Looper.myLooper());
 
-    @Override
-    protected String doInBackground(String... params) {
+    private void execute() {
+      AppController.getHelperProgressDialog()
+          .showProgress(context, "", "", false);
+      executor.execute(new Runnable() {
+        @Override
+        public void run() {
+//
+          handler.post(new Runnable() {
+            @Override
+            public void run() {
+              AppController.getHelperProgressDialog().dismissDialog();
+              SurveyScheduler survayScheduler = new SurveyScheduler(dbServiceSubscriber, realm);
+              completionAdherenceCalc =
+                  survayScheduler.completionAndAdherenceCalculation(
+                      ((SurveyActivity) context).getStudyId(), context);
+              if (completionAdherenceCalc.isNoCompletedAndMissed()) {
+                completionValue.setText("-- ");
+                progressBar1.setProgress(0);
+                adherenceValue.setText("-- ");
+                progressBar2.setProgress(0);
+              } else {
+                completionValue.setText("" + (int) completionAdherenceCalc.getCompletion());
+                progressBar1.setProgress((int) completionAdherenceCalc.getCompletion());
+                adherenceValue.setText("" + (int) completionAdherenceCalc.getAdherence());
+                progressBar2.setProgress((int) completionAdherenceCalc.getAdherence());
+              }
 
-      return null;
-    }
+              title1.setText(((SurveyActivity) context).getTitle1());
 
-    @Override
-    protected void onPostExecute(String result) {
-      AppController.getHelperProgressDialog().dismissDialog();
-      SurveyScheduler survayScheduler = new SurveyScheduler(dbServiceSubscriber, realm);
-      completionAdherenceCalc =
-          survayScheduler.completionAndAdherenceCalculation(
-              ((SurveyActivity) context).getStudyId(), context);
-      if (completionAdherenceCalc.isNoCompletedAndMissed()) {
-        completionValue.setText("-- ");
-        progressBar1.setProgress(0);
-        adherenceValue.setText("-- ");
-        progressBar2.setProgress(0);
-      } else {
-        completionValue.setText("" + (int) completionAdherenceCalc.getCompletion());
-        progressBar1.setProgress((int) completionAdherenceCalc.getCompletion());
-        adherenceValue.setText("" + (int) completionAdherenceCalc.getAdherence());
-        progressBar2.setProgress((int) completionAdherenceCalc.getAdherence());
-      }
+              arrayList = new ArrayList<>();
+              arrayListDup = new ArrayList<>();
+              if (dashboardData != null) {
+                for (int i = 0; i < dashboardData.getDashboard().getStatistics().size(); i++) {
+                  ResponseInfoActiveTaskModel responseInfoActiveTaskModel =
+                      new ResponseInfoActiveTaskModel();
+                  if (!arrayListDup.contains(
+                      dashboardData
+                          .getDashboard()
+                          .getStatistics()
+                          .get(i)
+                          .getDataSource()
+                          .getActivity()
+                          .getActivityId()
+                          + ","
+                          + dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey())) {
+                    responseInfoActiveTaskModel.setActivityId(
+                        dashboardData
+                            .getDashboard()
+                            .getStatistics()
+                            .get(i)
+                            .getDataSource()
+                            .getActivity()
+                            .getActivityId());
+                    responseInfoActiveTaskModel.setActivityVersion(
+                        dashboardData
+                            .getDashboard()
+                            .getStatistics()
+                            .get(i)
+                            .getDataSource()
+                            .getActivity()
+                            .getVersion());
+                    responseInfoActiveTaskModel.setKey(
+                        dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey());
+                    arrayList.add(responseInfoActiveTaskModel);
+                    arrayListDup.add(
+                        dashboardData
+                            .getDashboard()
+                            .getStatistics()
+                            .get(i)
+                            .getDataSource()
+                            .getActivity()
+                            .getActivityId()
+                            + ","
+                            + dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey());
+                  }
+                }
+                for (int i = 0; i < dashboardData.getDashboard().getCharts().size(); i++) {
+                  ResponseInfoActiveTaskModel responseInfoActiveTaskModel =
+                      new ResponseInfoActiveTaskModel();
+                  if (!arrayListDup.contains(
+                      dashboardData
+                          .getDashboard()
+                          .getCharts()
+                          .get(i)
+                          .getDataSource()
+                          .getActivity()
+                          .getActivityId()
+                          + ","
+                          + dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey())) {
+                    responseInfoActiveTaskModel.setActivityId(
+                        dashboardData
+                            .getDashboard()
+                            .getCharts()
+                            .get(i)
+                            .getDataSource()
+                            .getActivity()
+                            .getActivityId());
+                    responseInfoActiveTaskModel.setActivityVersion(
+                        dashboardData
+                            .getDashboard()
+                            .getCharts()
+                            .get(i)
+                            .getDataSource()
+                            .getActivity()
+                            .getVersion());
+                    responseInfoActiveTaskModel.setKey(
+                        dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey());
+                    arrayList.add(responseInfoActiveTaskModel);
+                    arrayListDup.add(
+                        dashboardData
+                            .getDashboard()
+                            .getCharts()
+                            .get(i)
+                            .getDataSource()
+                            .getActivity()
+                            .getActivityId()
+                            + ","
+                            + dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey());
+                  }
+                }
+              }
 
-      title1.setText(((SurveyActivity) context).getTitle1());
+              studies = dbServiceSubscriber.getStudies(((SurveyActivity) context).getStudyId(), realm);
+              if (arrayList.size() > 0) {
+                new ResponseData(
+                    ((SurveyActivity) context).getStudyId(),
+                    arrayList.get(0),
+                    studies.getParticipantId(),
+                    0).execute();
+              } else {
+                AppController.getHelperProgressDialog().dismissDialog();
+                addViewStatisticsValues();
+              }
+            }
 
-      arrayList = new ArrayList<>();
-      arrayListDup = new ArrayList<>();
-      if (dashboardData != null) {
-        for (int i = 0; i < dashboardData.getDashboard().getStatistics().size(); i++) {
-          ResponseInfoActiveTaskModel responseInfoActiveTaskModel =
-              new ResponseInfoActiveTaskModel();
-          if (!arrayListDup.contains(
-              dashboardData
-                      .getDashboard()
-                      .getStatistics()
-                      .get(i)
-                      .getDataSource()
-                      .getActivity()
-                      .getActivityId()
-                  + ","
-                  + dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey())) {
-            responseInfoActiveTaskModel.setActivityId(
-                dashboardData
-                    .getDashboard()
-                    .getStatistics()
-                    .get(i)
-                    .getDataSource()
-                    .getActivity()
-                    .getActivityId());
-            responseInfoActiveTaskModel.setActivityVersion(
-                dashboardData
-                    .getDashboard()
-                    .getStatistics()
-                    .get(i)
-                    .getDataSource()
-                    .getActivity()
-                    .getVersion());
-            responseInfoActiveTaskModel.setKey(
-                dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey());
-            arrayList.add(responseInfoActiveTaskModel);
-            arrayListDup.add(
-                dashboardData
-                        .getDashboard()
-                        .getStatistics()
-                        .get(i)
-                        .getDataSource()
-                        .getActivity()
-                        .getActivityId()
-                    + ","
-                    + dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey());
-          }
+          });
         }
-        for (int i = 0; i < dashboardData.getDashboard().getCharts().size(); i++) {
-          ResponseInfoActiveTaskModel responseInfoActiveTaskModel =
-              new ResponseInfoActiveTaskModel();
-          if (!arrayListDup.contains(
-              dashboardData
-                      .getDashboard()
-                      .getCharts()
-                      .get(i)
-                      .getDataSource()
-                      .getActivity()
-                      .getActivityId()
-                  + ","
-                  + dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey())) {
-            responseInfoActiveTaskModel.setActivityId(
-                dashboardData
-                    .getDashboard()
-                    .getCharts()
-                    .get(i)
-                    .getDataSource()
-                    .getActivity()
-                    .getActivityId());
-            responseInfoActiveTaskModel.setActivityVersion(
-                dashboardData
-                    .getDashboard()
-                    .getCharts()
-                    .get(i)
-                    .getDataSource()
-                    .getActivity()
-                    .getVersion());
-            responseInfoActiveTaskModel.setKey(
-                dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey());
-            arrayList.add(responseInfoActiveTaskModel);
-            arrayListDup.add(
-                dashboardData
-                    .getDashboard()
-                    .getCharts()
-                    .get(i)
-                    .getDataSource()
-                    .getActivity()
-                    .getActivityId()
-                    + ","
-                    + dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey());
-          }
-        }
-      }
-
-      studies = dbServiceSubscriber.getStudies(((SurveyActivity) context).getStudyId(), realm);
-      if (arrayList.size() > 0) {
-        new ResponseData(
-                ((SurveyActivity) context).getStudyId(),
-                arrayList.get(0),
-                studies.getParticipantId(),
-                0)
-            .execute();
-      } else {
-        AppController.getHelperProgressDialog().dismissDialog();
-        addViewStatisticsValues();
-      }
+      });
     }
 
-    @Override
-    protected void onPreExecute() {
-      AppController.getHelperProgressDialog().showProgress(context, "", "", false);
-    }
+//    @Override
+//    protected String doInBackground(String... params) {
+//
+//      return null;
+//    }
+
+//    @Override
+//    protected void onPostExecute(String result) {
+//      AppController.getHelperProgressDialog().dismissDialog();
+//      SurveyScheduler survayScheduler = new SurveyScheduler(dbServiceSubscriber, realm);
+//      completionAdherenceCalc =
+//              survayScheduler.completionAndAdherenceCalculation(
+//                      ((SurveyActivity) context).getStudyId(), context);
+//      if (completionAdherenceCalc.isNoCompletedAndMissed()) {
+//        completionValue.setText("-- ");
+//        progressBar1.setProgress(0);
+//        adherenceValue.setText("-- ");
+//        progressBar2.setProgress(0);
+//      } else {
+//        completionValue.setText("" + (int) completionAdherenceCalc.getCompletion());
+//        progressBar1.setProgress((int) completionAdherenceCalc.getCompletion());
+//        adherenceValue.setText("" + (int) completionAdherenceCalc.getAdherence());
+//        progressBar2.setProgress((int) completionAdherenceCalc.getAdherence());
+//      }
+//
+//      title1.setText(((SurveyActivity) context).getTitle1());
+//
+//      arrayList = new ArrayList<>();
+//      arrayListDup = new ArrayList<>();
+//      if (dashboardData != null) {
+//        for (int i = 0; i < dashboardData.getDashboard().getStatistics().size(); i++) {
+//          ResponseInfoActiveTaskModel responseInfoActiveTaskModel =
+//                  new ResponseInfoActiveTaskModel();
+//          if (!arrayListDup.contains(
+//                  dashboardData
+//                          .getDashboard()
+//                          .getStatistics()
+//                          .get(i)
+//                          .getDataSource()
+//                          .getActivity()
+//                          .getActivityId()
+//                          + ","
+//                          + dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey())) {
+//            responseInfoActiveTaskModel.setActivityId(
+//                    dashboardData
+//                            .getDashboard()
+//                            .getStatistics()
+//                            .get(i)
+//                            .getDataSource()
+//                            .getActivity()
+//                            .getActivityId());
+//            responseInfoActiveTaskModel.setActivityVersion(
+//                    dashboardData
+//                            .getDashboard()
+//                            .getStatistics()
+//                            .get(i)
+//                            .getDataSource()
+//                            .getActivity()
+//                            .getVersion());
+//            responseInfoActiveTaskModel.setKey(
+//                    dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey());
+//            arrayList.add(responseInfoActiveTaskModel);
+//            arrayListDup.add(
+//                    dashboardData
+//                            .getDashboard()
+//                            .getStatistics()
+//                            .get(i)
+//                            .getDataSource()
+//                            .getActivity()
+//                            .getActivityId()
+//                            + ","
+//                            + dashboardData.getDashboard().getStatistics().get(i).getDataSource().getKey());
+//          }
+//        }
+//        for (int i = 0; i < dashboardData.getDashboard().getCharts().size(); i++) {
+//          ResponseInfoActiveTaskModel responseInfoActiveTaskModel =
+//                  new ResponseInfoActiveTaskModel();
+//          if (!arrayListDup.contains(
+//                  dashboardData
+//                          .getDashboard()
+//                          .getCharts()
+//                          .get(i)
+//                          .getDataSource()
+//                          .getActivity()
+//                          .getActivityId()
+//                          + ","
+//                          + dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey())) {
+//            responseInfoActiveTaskModel.setActivityId(
+//                    dashboardData
+//                            .getDashboard()
+//                            .getCharts()
+//                            .get(i)
+//                            .getDataSource()
+//                            .getActivity()
+//                            .getActivityId());
+//            responseInfoActiveTaskModel.setActivityVersion(
+//                    dashboardData
+//                            .getDashboard()
+//                            .getCharts()
+//                            .get(i)
+//                            .getDataSource()
+//                            .getActivity()
+//                            .getVersion());
+//            responseInfoActiveTaskModel.setKey(
+//                    dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey());
+//            arrayList.add(responseInfoActiveTaskModel);
+//            arrayListDup.add(
+//                    dashboardData
+//                            .getDashboard()
+//                            .getCharts()
+//                            .get(i)
+//                            .getDataSource()
+//                            .getActivity()
+//                            .getActivityId()
+//                            + ","
+//                            + dashboardData.getDashboard().getCharts().get(i).getDataSource().getKey());
+//          }
+//        }
+//      }
+//
+//      studies = dbServiceSubscriber.getStudies(((SurveyActivity) context).getStudyId(), realm);
+//      if (arrayList.size() > 0) {
+//        new ResponseData(
+//                ((SurveyActivity) context).getStudyId(),
+//                arrayList.get(0),
+//                studies.getParticipantId(),
+//                0)
+//                .execute();
+//      } else {
+//        AppController.getHelperProgressDialog().dismissDialog();
+//        addViewStatisticsValues();
+//      }
+//    }
+//
+//    @Override
+//    protected void onPreExecute() {
+//
+//      AppController.getHelperProgressDialog()
+//              .showProgress(context, "", "", false);
+//
+//    }
   }
 
   private void setDay() {
@@ -1300,7 +1550,7 @@ public class SurveyDashboardFragment extends Fragment
     calendar1.set(Calendar.MILLISECOND, 999);
     toDayVal = dateFormatForApi.format(calendar1.getTime());
     SimpleDateFormat simpleDateFormat =
-        AppController.getDateFormatForDashboardAndChartCurrentDayOut();
+            AppController.getDateFormatForDashboardAndChartCurrentDayOut();
     changeDateLabel.setText(simpleDateFormat.format(calendar.getTime()));
     setColorForSelectedDayMonthYear(dayLayout);
     dateType = DAY;
@@ -1317,9 +1567,9 @@ public class SurveyDashboardFragment extends Fragment
     fromDayVal = dateFormatForApi.format(calendar.getTime());
 
     SimpleDateFormat simpleDateFormat =
-        AppController.getDateFormatForDashboardAndChartCurrentDayOut();
+            AppController.getDateFormatForDashboardAndChartCurrentDayOut();
     String text =
-        simpleDateFormat.format(calendar.getTime()) + " - " + simpleDateFormat.format(new Date());
+            simpleDateFormat.format(calendar.getTime()) + " - " + simpleDateFormat.format(new Date());
     changeDateLabel.setText(text);
 
     calendar.add(Calendar.DATE, 6);
@@ -1368,7 +1618,9 @@ public class SurveyDashboardFragment extends Fragment
     super.onDestroy();
   }
 
-  private class ResponseData extends AsyncTask<String, Void, String> {
+  private class ResponseData
+//      extends AsyncTask<String, Void, String>
+  {
 
     String participateId;
     ResponseInfoActiveTaskModel responseInfoActiveTaskModel;
@@ -1382,101 +1634,20 @@ public class SurveyDashboardFragment extends Fragment
     String queryParam = "*";
 
     ResponseData(
-        String studyId,
-        ResponseInfoActiveTaskModel responseInfoActiveTaskModel,
-        String participateId,
-        int position) {
+            String studyId,
+            ResponseInfoActiveTaskModel responseInfoActiveTaskModel,
+            String participateId,
+            int position) {
       this.studyId = studyId;
       this.responseInfoActiveTaskModel = responseInfoActiveTaskModel;
       this.participateId = participateId;
       this.position = position;
     }
 
-    @Override
-    protected String doInBackground(String... params) {
+    private void execute() {
+      Executor executor = Executors.newSingleThreadExecutor();
+      Handler handler = new Handler(Looper.myLooper());
 
-      ConnectionDetector connectionDetector = new ConnectionDetector(context);
-      Realm realm = AppController.getRealmobj(context);
-
-      String actvityRunId = "";
-
-      if (connectionDetector.isConnectingToInternet()) {
-
-        HashMap<String, String> header = new HashMap<>();
-        header.put(
-            getContext().getString(R.string.clientToken),
-            SharedPreferenceHelper.readPreference(
-                context, getContext().getString(R.string.clientToken), ""));
-        header.put(
-            "Authorization",
-            "Bearer "
-                + SharedPreferenceHelper.readPreference(
-                    context, getContext().getString(R.string.auth), ""));
-        header.put(
-            "userId",
-            SharedPreferenceHelper.readPreference(
-                context, getContext().getString(R.string.userid), ""));
-        Studies studies = realm.where(Studies.class).equalTo("studyId", studyId).findFirst();
-        responseModel =
-            HttpRequest.getRequest(
-                Urls.PROCESSRESPONSEDATA
-                    + AppConfig.APP_ID_KEY
-                    + "="
-                    + AppConfig.APP_ID_VALUE
-                    + "&participantId="
-                    + participateId
-                    + "&tokenId="
-                    + studies.getHashedToken()
-                    + "&siteId="
-                    + studies.getSiteId()
-                    + "&studyId="
-                    + studies.getStudyId()
-                    + "&activityId="
-                    + responseInfoActiveTaskModel.getActivityId()
-                    + "&questionKey="
-                    + responseInfoActiveTaskModel.getKey()
-                    + "&activityVersion="
-                    + responseInfoActiveTaskModel.getActivityVersion()
-                    + "&activityRunId="
-                    + actvityRunId,
-                header,
-                "");
-        dbServiceSubscriber.closeRealmObj(realm);
-        responseCode = responseModel.getResponseCode();
-        response = responseModel.getResponseData();
-        if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("timeout")) {
-          response = "timeout";
-        } else if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("")) {
-          response = "error";
-        } else if (Integer.parseInt(responseCode) >= 201
-            && Integer.parseInt(responseCode) < 300
-            && response.equalsIgnoreCase("")) {
-          response = "No data";
-        } else if (Integer.parseInt(responseCode) >= 400
-            && Integer.parseInt(responseCode) < 500
-            && response.equalsIgnoreCase("http_not_ok")) {
-          response = "client error";
-        } else if (Integer.parseInt(responseCode) >= 500
-            && Integer.parseInt(responseCode) < 600
-            && response.equalsIgnoreCase("http_not_ok")) {
-          response = "server error";
-        } else if (response.equalsIgnoreCase("http_not_ok")) {
-          response = "Unknown error";
-        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_UNAUTHORIZED) {
-          response = "session expired";
-        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_OK
-            && !response.equalsIgnoreCase("")) {
-          response = response;
-        } else {
-          response = getContext().getString(R.string.unknown_error);
-        }
-      }
-      return response;
-    }
-
-    @Override
-    protected void onPreExecute() {
-      super.onPreExecute();
       AppController.getHelperProgressDialog().showProgress(context, "", "", false);
       id = responseInfoActiveTaskModel.getActivityId();
       stepKey = responseInfoActiveTaskModel.getKey();
@@ -1499,271 +1670,1049 @@ public class SurveyDashboardFragment extends Fragment
           }
         }
       }
-    }
+//      executor.execute(new Runnable() {
+//        @Override
+//        public void run() {
 
-    @Override
-    protected void onPostExecute(String response) {
-      super.onPostExecute(response);
-      if (response != null) {
-        if (response.equalsIgnoreCase("session expired")) {
-          AppController.getHelperProgressDialog().dismissDialog();
-          AppController.getHelperSessionExpired(context, "session expired");
-        } else if (response.equalsIgnoreCase("timeout")) {
-          addViewStatisticsValues();
-          AppController.getHelperProgressDialog().dismissDialog();
-          Toast.makeText(
-                  context,
-                  getContext().getResources().getString(R.string.connection_timeout),
-                  Toast.LENGTH_SHORT)
-              .show();
-        } else if (Integer.parseInt(responseCode) == 500) {
-          try {
-            JSONObject jsonObject = new JSONObject(String.valueOf(responseModel.getResponseData()));
-            String exception = String.valueOf(jsonObject.get("exception"));
-            if (exception.contains("Query or table not found")) {
-              if (arrayList.size() > (position + 1)) {
-                new ResponseData(
+          ConnectionDetector connectionDetector = new ConnectionDetector(context);
+          Realm realm = AppController.getRealmobj(context);
+
+          String actvityRunId = "";
+
+      if (connectionDetector.isConnectingToInternet()) {
+
+        HashMap<String, String> header = new HashMap<>();
+        header.put(
+                context.getString(R.string.clientToken),
+                SharedPreferenceHelper.readPreference(
+                        context, context.getString(R.string.clientToken), ""));
+        header.put(
+                "Authorization",
+                "Bearer "
+                        + SharedPreferenceHelper.readPreference(
+                        context, context.getString(R.string.auth), ""));
+        header.put(
+                "userId",
+                SharedPreferenceHelper.readPreference(
+                        context, context.getString(R.string.userid), ""));
+        Studies studies = realm.where(Studies.class).equalTo("studyId", studyId).findFirst();
+//        responseModel =
+//                HttpRequest.getRequest(
+//                        Urls.PROCESSRESPONSEDATA
+//                                + AppConfig.APP_ID_KEY
+//                                + "="
+//                                + AppConfig.APP_ID_VALUE
+//                                + "&participantId="
+//                                + participateId
+//                                + "&tokenId="
+//                                + studies.getHashedToken()
+//                                + "&siteId="
+//                                + studies.getSiteId()
+//                                + "&studyId="
+//                                + studies.getStudyId()
+//                                + "&activityId="
+//                                + responseInfoActiveTaskModel.getActivityId()
+//                                + "&questionKey="
+//                                + responseInfoActiveTaskModel.getKey()
+//                                + "&activityVersion="
+//                                + responseInfoActiveTaskModel.getActivityVersion()
+//                                + "&activityRunId="
+//                                + actvityRunId,
+//                        header,
+//                        "");
+        responseServerInterface.getParticipantData(header, AppConfig.APP_ID_VALUE, participateId,
+            studies.getHashedToken(), studies.getSiteId(), studies.getStudyId(), responseInfoActiveTaskModel.getActivityId(),
+            responseInfoActiveTaskModel.getKey(), responseInfoActiveTaskModel.getActivityVersion(), actvityRunId).enqueue(
+            new Callback<ResponseBody>() {
+              @Override
+              public void onResponse(Call<ResponseBody> call, Response<ResponseBody> responseData) {
+                responseCode = String.valueOf(responseData.code());
+                if (responseCode.equalsIgnoreCase("0") &&
+                    responseData.message().equalsIgnoreCase("timeout")) {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  Toast.makeText(
+                          context,
+                          getResources().getString(R.string.connection_timeout),
+                          Toast.LENGTH_SHORT)
+                      .show();
+                } else if (responseCode.equalsIgnoreCase("0") &&
+                    responseData.message().equalsIgnoreCase("")) {
+                  response = "error";
+                } else if (Integer.parseInt(responseCode) >= 201
+                    && Integer.parseInt(responseCode) < 300
+                    && responseData.message().equalsIgnoreCase("")) {
+                  response = "No data";
+                } else if (Integer.parseInt(responseCode) >= 400
+                    && Integer.parseInt(responseCode) < 500
+                    && responseData.message().equalsIgnoreCase("http_not_ok")) {
+                  response = "client error";
+                } else if (Integer.parseInt(responseCode) == 500) {
+                  try {
+                    JSONObject jsonObject = new JSONObject(String.valueOf(responseModel.getResponseData()));
+                    String exception = String.valueOf(jsonObject.get("exception"));
+                    if (exception.contains("Query or table not found")) {
+                      if (arrayList.size() > (position + 1)) {
+                        new ResponseData(
+                            ((SurveyActivity) context).getStudyId(),
+                            arrayList.get((position + 1)),
+                            studies.getParticipantId(),
+                            position + 1)
+                            .execute();
+                      } else {
+                        addViewStatisticsValues();
+                        AppController.getHelperProgressDialog().dismissDialog();
+                      }
+                    } else {
+                      addViewStatisticsValues();
+                      AppController.getHelperProgressDialog().dismissDialog();
+                    }
+                  } catch (JSONException e) {
+                    addViewStatisticsValues();
+                    AppController.getHelperProgressDialog().dismissDialog();
+                    Logger.log(e);
+                  }
+                } else if (Integer.parseInt(responseCode) >= 500
+                    && Integer.parseInt(responseCode) < 600
+                    && responseData.message().equalsIgnoreCase("http_not_ok")) {
+                  response = "server error";
+                } else if (responseData.code() == 401) {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  Toast.makeText(context, "session expired", Toast.LENGTH_LONG).show();
+                  AppController.getHelperSessionExpired(context, "session expired");
+                } else if (responseData.code() == 200
+                    && responseData.body() != null) {
+                  try {
+                    SimpleDateFormat simpleDateFormat = AppController.getLabkeyDateFormat();
+                    JSONObject jsonObject = new JSONObject(responseData.body().string());
+                    Log.e("check","response is "+jsonObject);
+                    JSONArray jsonArray = (JSONArray) jsonObject.get("rows");
+                    Gson gson = new Gson();
+                    for (int i = 0; i < jsonArray.length(); i++) {
+                      JSONObject jsonObject1 = new JSONObject(String.valueOf(jsonArray.get(i)));
+                      JSONArray jsonArray1 = (JSONArray) jsonObject1.get("data");
+                      int duration = 0;
+                      Date completedDate = null;
+                      for (int j = 0; j < jsonArray1.length(); j++) {
+                        JSONObject jsonObjectData = (JSONObject) jsonArray1.get(j);
+                        Type type = new TypeToken<Map<String, Object>>() {
+                        }.getType();
+                        Map<String, Object> map = gson.fromJson(String.valueOf(jsonObjectData), type);
+                        StepRecordCustom stepRecordCustom = new StepRecordCustom();
+                        if (completedDate == null) {
+                          try {
+                            Object completedDateValMap = gson.toJson(map.get("Created"));
+                            Map<String, Object> completedDateVal =
+                                gson.fromJson(String.valueOf(completedDateValMap), type);
+                            if (completedDateVal != null) {
+                              completedDate =
+                                  simpleDateFormat.parse(String.valueOf(completedDateVal.get("value")));
+                              Log.e("check", "date is not null " + completedDate);
+                            }
+                          } catch (JsonSyntaxException | ParseException e) {
+                            Logger.log(e);
+                            Log.e("check", "date is not null " + completedDate);
+                          }
+                        }
+
+                        try {
+                          Object durationValMap = gson.toJson(map.get("duration"));
+                          Map<String, Object> completedDateVal =
+                              gson.fromJson(String.valueOf(durationValMap), type);
+                          if (completedDateVal != null) {
+                            duration = (int) Double.parseDouble("" + completedDateVal.get("value"));
+                          }
+                        } catch (Exception e) {
+                          Logger.log(e);
+                        }
+
+                        for (Map.Entry<String, Object> entry : map.entrySet()) {
+                          String key = entry.getKey();
+                          String valueobj = gson.toJson(entry.getValue());
+                          Map<String, Object> vauleMap = gson.fromJson(String.valueOf(valueobj), type);
+                          Object value = vauleMap.get("value");
+                          if (!key.equalsIgnoreCase("container")
+                              && !key.equalsIgnoreCase("ParticipantId")
+                              && !key.equalsIgnoreCase("EntityId")
+                              && !key.equalsIgnoreCase("Modified")
+                              && !key.equalsIgnoreCase("lastIndexed")
+                              && !key.equalsIgnoreCase("ModifiedBy")
+                              && !key.equalsIgnoreCase("CreatedBy")
+                              && !key.equalsIgnoreCase("Key")
+                              && !key.equalsIgnoreCase("duration")
+                              && !key.equalsIgnoreCase(stepKey + "Id")
+                              && !key.equalsIgnoreCase("Created")) {
+
+                            int runId =
+                                dbServiceSubscriber.getActivityRunForStatsAndCharts(
+                                    responseInfoActiveTaskModel.getActivityId(),
+                                    studyId,
+                                    completedDate,
+                                    realm);
+
+                            if (key.equalsIgnoreCase("count")) {
+                              stepRecordCustom.setStepId(stepKey);
+                              stepRecordCustom.setTaskStepID(
+                                  studyId
+                                      + "_STUDYID_"
+                                      + responseInfoActiveTaskModel.getActivityId()
+                                      + "_"
+                                      + runId
+                                      + "_"
+                                      + stepKey);
+
+                              stepRecordCustom.setStudyId(studyId);
+                              stepRecordCustom.setActivityID(
+                                  studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
+                              stepRecordCustom.setTaskId(
+                                  studyId
+                                      + "_STUDYID_"
+                                      + responseInfoActiveTaskModel.getActivityId()
+                                      + "_"
+                                      + runId);
+
+                              stepRecordCustom.setCompleted(completedDate);
+                              stepRecordCustom.setStarted(completedDate);
+
+                              JSONObject jsonObject2 = new JSONObject();
+                              ActivitiesWS activityObj =
+                                  dbServiceSubscriber.getActivityObj(
+                                      responseInfoActiveTaskModel.getActivityId(), studyId, realm);
+                              if (activityObj.getType().equalsIgnoreCase("task")) {
+                                JSONObject jsonObject3 = new JSONObject();
+                                jsonObject3.put("value", value);
+                                jsonObject3.put("duration", duration);
+
+                                jsonObject2.put("answer", jsonObject3);
+                              } else {
+                                jsonObject2.put("answer", value);
+                              }
+
+                              stepRecordCustom.setResult(String.valueOf(jsonObject2));
+                              Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
+                              if (currentIdNum == null) {
+                                stepRecordCustom.setId(1);
+                              } else {
+                                stepRecordCustom.setId(currentIdNum.intValue() + 1);
+                              }
+                              dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
+                            } else {
+                              if (key.equalsIgnoreCase(stepKey)) {
+                                stepRecordCustom.setStepId(key);
+                                stepRecordCustom.setTaskStepID(
+                                    studyId
+                                        + "_STUDYID_"
+                                        + responseInfoActiveTaskModel.getActivityId()
+                                        + "_"
+                                        + runId
+                                        + "_"
+                                        + key);
+
+                                stepRecordCustom.setStudyId(studyId);
+                                stepRecordCustom.setActivityID(
+                                    studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
+                                stepRecordCustom.setTaskId(
+                                    studyId
+                                        + "_STUDYID_"
+                                        + responseInfoActiveTaskModel.getActivityId()
+                                        + "_"
+                                        + runId);
+
+                                stepRecordCustom.setCompleted(completedDate);
+                                stepRecordCustom.setStarted(completedDate);
+
+                                try {
+                                  Date anchordate = AppController.getLabkeyDateFormat().parse("" + value);
+                                  value = AppController.getDateFormatForApi().format(anchordate);
+                                } catch (ParseException e) {
+                                  Logger.log(e);
+                                }
+
+                                JSONObject jsonObject2 = new JSONObject();
+                                ActivitiesWS activityObj =
+                                    dbServiceSubscriber.getActivityObj(
+                                        responseInfoActiveTaskModel.getActivityId(), studyId, realm);
+                                if (activityObj.getType().equalsIgnoreCase("task")) {
+                                  JSONObject jsonObject3 = new JSONObject();
+                                  jsonObject3.put("value", value);
+                                  jsonObject3.put("duration", duration);
+
+                                  jsonObject2.put("answer", jsonObject3);
+                                } else {
+                                  jsonObject2.put("answer", value);
+                                }
+
+                                stepRecordCustom.setResult(String.valueOf(jsonObject2));
+                                Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
+                                if (currentIdNum == null) {
+                                  stepRecordCustom.setId(1);
+                                } else {
+                                  stepRecordCustom.setId(currentIdNum.intValue() + 1);
+                                }
+                                dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    if (arrayList.size() > (position + 1)) {
+                      new ResponseData(
+                          ((SurveyActivity) context).getStudyId(),
+                          arrayList.get((position + 1)),
+                          studies.getParticipantId(),
+                          position + 1)
+                          .execute();
+                    } else {
+                      addViewStatisticsValues();
+                      AppController.getHelperProgressDialog().dismissDialog();
+                    }
+                  } catch (Exception e) {
+                    Logger.log(e);
+                    if (arrayList.size() > (position + 1)) {
+                      new ResponseData(
+                          ((SurveyActivity) context).getStudyId(),
+                          arrayList.get((position + 1)),
+                          studies.getParticipantId(),
+                          position + 1)
+                          .execute();
+                    } else {
+                      addViewStatisticsValues();
+                      AppController.getHelperProgressDialog().dismissDialog();
+                    }
+                  }
+                } else {
+                  if (arrayList.size() > (position + 1)) {
+                    new ResponseData(
                         ((SurveyActivity) context).getStudyId(),
                         arrayList.get((position + 1)),
                         studies.getParticipantId(),
                         position + 1)
-                    .execute();
-              } else {
-                addViewStatisticsValues();
-                AppController.getHelperProgressDialog().dismissDialog();
-              }
-            } else {
-              addViewStatisticsValues();
-              AppController.getHelperProgressDialog().dismissDialog();
-            }
-          } catch (JSONException e) {
-            addViewStatisticsValues();
-            AppController.getHelperProgressDialog().dismissDialog();
-            Logger.log(e);
-          }
-        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_OK) {
-          try {
-            SimpleDateFormat simpleDateFormat = AppController.getLabkeyDateFormat();
-            JSONObject jsonObject = new JSONObject(response);
-            Log.e("check","response is "+jsonObject);
-            JSONArray jsonArray = (JSONArray) jsonObject.get("rows");
-            Gson gson = new Gson();
-            for (int i = 0; i < jsonArray.length(); i++) {
-              JSONObject jsonObject1 = new JSONObject(String.valueOf(jsonArray.get(i)));
-              JSONArray jsonArray1 = (JSONArray) jsonObject1.get("data");
-              int duration = 0;
-              Date completedDate = null;
-              for (int j = 0; j < jsonArray1.length(); j++) {
-                JSONObject jsonObjectData = (JSONObject) jsonArray1.get(j);
-                Type type = new TypeToken<Map<String, Object>>() {
-                }.getType();
-                Map<String, Object> map = gson.fromJson(String.valueOf(jsonObjectData), type);
-                StepRecordCustom stepRecordCustom = new StepRecordCustom();
-                if (completedDate == null) {
-                  try {
-                    Object completedDateValMap = gson.toJson(map.get("Created"));
-                    Map<String, Object> completedDateVal =
-                        gson.fromJson(String.valueOf(completedDateValMap), type);
-                    if (completedDateVal != null) {
-                      completedDate =
-                          simpleDateFormat.parse(String.valueOf(completedDateVal.get("value")));
-                      Log.e("check", "date is not null " + completedDate);
-                    }
-                  } catch (JsonSyntaxException | ParseException e) {
-                    Logger.log(e);
-                    Log.e("check", "date is not null " + completedDate);
-                  }
-                }
-
-                try {
-                  Object durationValMap = gson.toJson(map.get("duration"));
-                  Map<String, Object> completedDateVal =
-                      gson.fromJson(String.valueOf(durationValMap), type);
-                  if (completedDateVal != null) {
-                    duration = (int) Double.parseDouble("" + completedDateVal.get("value"));
-                  }
-                } catch (Exception e) {
-                  Logger.log(e);
-                }
-
-                for (Map.Entry<String, Object> entry : map.entrySet()) {
-                  String key = entry.getKey();
-                  String valueobj = gson.toJson(entry.getValue());
-                  Map<String, Object> vauleMap = gson.fromJson(String.valueOf(valueobj), type);
-                  Object value = vauleMap.get("value");
-                  if (!key.equalsIgnoreCase("container")
-                      && !key.equalsIgnoreCase("ParticipantId")
-                      && !key.equalsIgnoreCase("EntityId")
-                      && !key.equalsIgnoreCase("Modified")
-                      && !key.equalsIgnoreCase("lastIndexed")
-                      && !key.equalsIgnoreCase("ModifiedBy")
-                      && !key.equalsIgnoreCase("CreatedBy")
-                      && !key.equalsIgnoreCase("Key")
-                      && !key.equalsIgnoreCase("duration")
-                      && !key.equalsIgnoreCase(stepKey + "Id")
-                      && !key.equalsIgnoreCase("Created")) {
-
-                    int runId =
-                        dbServiceSubscriber.getActivityRunForStatsAndCharts(
-                            responseInfoActiveTaskModel.getActivityId(),
-                            studyId,
-                            completedDate,
-                            realm);
-
-                    if (key.equalsIgnoreCase("count")) {
-                      stepRecordCustom.setStepId(stepKey);
-                      stepRecordCustom.setTaskStepID(
-                          studyId
-                              + "_STUDYID_"
-                              + responseInfoActiveTaskModel.getActivityId()
-                              + "_"
-                              + runId
-                              + "_"
-                              + stepKey);
-
-                      stepRecordCustom.setStudyId(studyId);
-                      stepRecordCustom.setActivityID(
-                          studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
-                      stepRecordCustom.setTaskId(
-                          studyId
-                              + "_STUDYID_"
-                              + responseInfoActiveTaskModel.getActivityId()
-                              + "_"
-                              + runId);
-
-                      stepRecordCustom.setCompleted(completedDate);
-                      stepRecordCustom.setStarted(completedDate);
-
-                      JSONObject jsonObject2 = new JSONObject();
-                      ActivitiesWS activityObj =
-                          dbServiceSubscriber.getActivityObj(
-                              responseInfoActiveTaskModel.getActivityId(), studyId, realm);
-                      if (activityObj.getType().equalsIgnoreCase("task")) {
-                        JSONObject jsonObject3 = new JSONObject();
-                        jsonObject3.put("value", value);
-                        jsonObject3.put("duration", duration);
-
-                        jsonObject2.put("answer", jsonObject3);
-                      } else {
-                        jsonObject2.put("answer", value);
-                      }
-
-                      stepRecordCustom.setResult(String.valueOf(jsonObject2));
-                      Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
-                      if (currentIdNum == null) {
-                        stepRecordCustom.setId(1);
-                      } else {
-                        stepRecordCustom.setId(currentIdNum.intValue() + 1);
-                      }
-                      dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
-                    } else {
-                      if (key.equalsIgnoreCase(stepKey)) {
-                        stepRecordCustom.setStepId(key);
-                        stepRecordCustom.setTaskStepID(
-                            studyId
-                                + "_STUDYID_"
-                                + responseInfoActiveTaskModel.getActivityId()
-                                + "_"
-                                + runId
-                                + "_"
-                                + key);
-
-                        stepRecordCustom.setStudyId(studyId);
-                        stepRecordCustom.setActivityID(
-                            studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
-                        stepRecordCustom.setTaskId(
-                            studyId
-                                + "_STUDYID_"
-                                + responseInfoActiveTaskModel.getActivityId()
-                                + "_"
-                                + runId);
-
-                        stepRecordCustom.setCompleted(completedDate);
-                        stepRecordCustom.setStarted(completedDate);
-
-                        try {
-                          Date anchordate = AppController.getLabkeyDateFormat().parse("" + value);
-                          value = AppController.getDateFormatForApi().format(anchordate);
-                        } catch (ParseException e) {
-                          Logger.log(e);
-                        }
-
-                        JSONObject jsonObject2 = new JSONObject();
-                        ActivitiesWS activityObj =
-                            dbServiceSubscriber.getActivityObj(
-                                responseInfoActiveTaskModel.getActivityId(), studyId, realm);
-                        if (activityObj.getType().equalsIgnoreCase("task")) {
-                          JSONObject jsonObject3 = new JSONObject();
-                          jsonObject3.put("value", value);
-                          jsonObject3.put("duration", duration);
-
-                          jsonObject2.put("answer", jsonObject3);
-                        } else {
-                          jsonObject2.put("answer", value);
-                        }
-
-                        stepRecordCustom.setResult(String.valueOf(jsonObject2));
-                        Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
-                        if (currentIdNum == null) {
-                          stepRecordCustom.setId(1);
-                        } else {
-                          stepRecordCustom.setId(currentIdNum.intValue() + 1);
-                        }
-                        dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
-                      }
-                    }
+                        .execute();
+                  } else {
+                    addViewStatisticsValues();
+                    AppController.getHelperProgressDialog().dismissDialog();
                   }
                 }
               }
+
+
+              @Override
+              public void onFailure(Call<ResponseBody> call, Throwable t) {
+
+              }
             }
-            if (arrayList.size() > (position + 1)) {
-              new ResponseData(
-                      ((SurveyActivity) context).getStudyId(),
-                      arrayList.get((position + 1)),
-                      studies.getParticipantId(),
-                      position + 1)
-                  .execute();
-            } else {
-              addViewStatisticsValues();
-              AppController.getHelperProgressDialog().dismissDialog();
-            }
-          } catch (Exception e) {
-            Logger.log(e);
-            if (arrayList.size() > (position + 1)) {
-              new ResponseData(
-                      ((SurveyActivity) context).getStudyId(),
-                      arrayList.get((position + 1)),
-                      studies.getParticipantId(),
-                      position + 1)
-                  .execute();
-            } else {
-              addViewStatisticsValues();
-              AppController.getHelperProgressDialog().dismissDialog();
-            }
-          }
-        } else {
-          if (arrayList.size() > (position + 1)) {
-            new ResponseData(
-                    ((SurveyActivity) context).getStudyId(),
-                    arrayList.get((position + 1)),
-                    studies.getParticipantId(),
-                    position + 1)
-                .execute();
-          } else {
-            addViewStatisticsValues();
-            AppController.getHelperProgressDialog().dismissDialog();
-          }
-        }
+        );
+//          responseCode = responseModel.getResponseCode();
+//          response = responseModel.getResponseData();
+//          if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("timeout")) {
+//              response = "timeout";
+//          } else if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("")) {
+//              response = "error";
+//          } else if (Integer.parseInt(responseCode) >= 201
+//                  && Integer.parseInt(responseCode) < 300
+//                  && response.equalsIgnoreCase("")) {
+//              response = "No data";
+//          } else if (Integer.parseInt(responseCode) >= 400
+//                  && Integer.parseInt(responseCode) < 500
+//                  && response.equalsIgnoreCase("http_not_ok")) {
+//              response = "client error";
+//          } else if (Integer.parseInt(responseCode) >= 500
+//                  && Integer.parseInt(responseCode) < 600
+//                  && response.equalsIgnoreCase("http_not_ok")) {
+//              response = "server error";
+//          } else if (response.equalsIgnoreCase("http_not_ok")) {
+//              response = "Unknown error";
+//          } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_UNAUTHORIZED) {
+//              response = "session expired";
+//          } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_OK
+//                  && !response.equalsIgnoreCase("")) {
+//              response = response;
+//          } else {
+//              response = getString(R.string.unknown_error);
+//          }
+                        dbServiceSubscriber.closeRealmObj(realm);
+
       } else {
         addViewStatisticsValues();
         AppController.getHelperProgressDialog().dismissDialog();
-        Toast.makeText(context, getContext().getString(R.string.unknown_error), Toast.LENGTH_SHORT)
+        Toast.makeText(context, context.getString(R.string.unknown_error), Toast.LENGTH_SHORT)
             .show();
       }
+//        }
+//      return response;
+
+//          handler.post(new Runnable() {
+//            @Override
+//            public void run() {
+//              if (response != null) {
+//                if (response.equalsIgnoreCase("session expired")) {
+//                  AppController.getHelperProgressDialog().dismissDialog();
+//                  AppController.getHelperSessionExpired(context, "session expired");
+//                } else if (response.equalsIgnoreCase("timeout")) {
+//                  addViewStatisticsValues();
+//                  AppController.getHelperProgressDialog().dismissDialog();
+//                  Toast.makeText(
+//                          context,
+//                          context.getResources().getString(R.string.connection_timeout),
+//                          Toast.LENGTH_SHORT)
+//                      .show();
+//                }
+//                else if (Integer.parseInt(responseCode) == 500) {
+//                  try {
+//                    JSONObject jsonObject = new JSONObject(String.valueOf(responseModel.getResponseData()));
+//                    String exception = String.valueOf(jsonObject.get("exception"));
+//                    if (exception.contains("Query or table not found")) {
+//                      if (arrayList.size() > (position + 1)) {
+//                        new ResponseData(
+//                            ((SurveyActivity) context).getStudyId(),
+//                            arrayList.get((position + 1)),
+//                            studies.getParticipantId(),
+//                            position + 1)
+//                            .execute();
+//                      } else {
+//                        addViewStatisticsValues();
+//                        AppController.getHelperProgressDialog().dismissDialog();
+//                      }
+//                    } else {
+//                      addViewStatisticsValues();
+//                      AppController.getHelperProgressDialog().dismissDialog();
+//                    }
+//                  } catch (JSONException e) {
+//                    addViewStatisticsValues();
+//                    AppController.getHelperProgressDialog().dismissDialog();
+//                    Logger.log(e);
+//                  }
+//                }
+//                else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_OK) {
+//                  try {
+//                    SimpleDateFormat simpleDateFormat = AppController.getLabkeyDateFormat();
+//                    JSONObject jsonObject = new JSONObject(response);
+//                    Log.e("check","response is "+jsonObject);
+//                    JSONArray jsonArray = (JSONArray) jsonObject.get("rows");
+//                    Gson gson = new Gson();
+//                    for (int i = 0; i < jsonArray.length(); i++) {
+//                      JSONObject jsonObject1 = new JSONObject(String.valueOf(jsonArray.get(i)));
+//                      JSONArray jsonArray1 = (JSONArray) jsonObject1.get("data");
+//                      int duration = 0;
+//                      Date completedDate = null;
+//                      for (int j = 0; j < jsonArray1.length(); j++) {
+//                        JSONObject jsonObjectData = (JSONObject) jsonArray1.get(j);
+//                        Type type = new TypeToken<Map<String, Object>>() {
+//                        }.getType();
+//                        Map<String, Object> map = gson.fromJson(String.valueOf(jsonObjectData), type);
+//                        StepRecordCustom stepRecordCustom = new StepRecordCustom();
+//                        if (completedDate == null) {
+//                          try {
+//                            Object completedDateValMap = gson.toJson(map.get("Created"));
+//                            Map<String, Object> completedDateVal =
+//                                gson.fromJson(String.valueOf(completedDateValMap), type);
+//                            if (completedDateVal != null) {
+//                              completedDate =
+//                                  simpleDateFormat.parse(String.valueOf(completedDateVal.get("value")));
+//                              Log.e("check", "date is not null " + completedDate);
+//                            }
+//                          } catch (JsonSyntaxException | ParseException e) {
+//                            Logger.log(e);
+//                            Log.e("check", "date is not null " + completedDate);
+//                          }
+//                        }
+//
+//                        try {
+//                          Object durationValMap = gson.toJson(map.get("duration"));
+//                          Map<String, Object> completedDateVal =
+//                              gson.fromJson(String.valueOf(durationValMap), type);
+//                          if (completedDateVal != null) {
+//                            duration = (int) Double.parseDouble("" + completedDateVal.get("value"));
+//                          }
+//                        } catch (Exception e) {
+//                          Logger.log(e);
+//                        }
+//
+//                        for (Map.Entry<String, Object> entry : map.entrySet()) {
+//                          String key = entry.getKey();
+//                          String valueobj = gson.toJson(entry.getValue());
+//                          Map<String, Object> vauleMap = gson.fromJson(String.valueOf(valueobj), type);
+//                          Object value = vauleMap.get("value");
+//                          if (!key.equalsIgnoreCase("container")
+//                              && !key.equalsIgnoreCase("ParticipantId")
+//                              && !key.equalsIgnoreCase("EntityId")
+//                              && !key.equalsIgnoreCase("Modified")
+//                              && !key.equalsIgnoreCase("lastIndexed")
+//                              && !key.equalsIgnoreCase("ModifiedBy")
+//                              && !key.equalsIgnoreCase("CreatedBy")
+//                              && !key.equalsIgnoreCase("Key")
+//                              && !key.equalsIgnoreCase("duration")
+//                              && !key.equalsIgnoreCase(stepKey + "Id")
+//                              && !key.equalsIgnoreCase("Created")) {
+//
+//                            int runId =
+//                                dbServiceSubscriber.getActivityRunForStatsAndCharts(
+//                                    responseInfoActiveTaskModel.getActivityId(),
+//                                    studyId,
+//                                    completedDate,
+//                                    realm);
+//
+//                            if (key.equalsIgnoreCase("count")) {
+//                              stepRecordCustom.setStepId(stepKey);
+//                              stepRecordCustom.setTaskStepID(
+//                                  studyId
+//                                      + "_STUDYID_"
+//                                      + responseInfoActiveTaskModel.getActivityId()
+//                                      + "_"
+//                                      + runId
+//                                      + "_"
+//                                      + stepKey);
+//
+//                              stepRecordCustom.setStudyId(studyId);
+//                              stepRecordCustom.setActivityID(
+//                                  studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
+//                              stepRecordCustom.setTaskId(
+//                                  studyId
+//                                      + "_STUDYID_"
+//                                      + responseInfoActiveTaskModel.getActivityId()
+//                                      + "_"
+//                                      + runId);
+//
+//                              stepRecordCustom.setCompleted(completedDate);
+//                              stepRecordCustom.setStarted(completedDate);
+//
+//                              JSONObject jsonObject2 = new JSONObject();
+//                              ActivitiesWS activityObj =
+//                                  dbServiceSubscriber.getActivityObj(
+//                                      responseInfoActiveTaskModel.getActivityId(), studyId, realm);
+//                              if (activityObj.getType().equalsIgnoreCase("task")) {
+//                                JSONObject jsonObject3 = new JSONObject();
+//                                jsonObject3.put("value", value);
+//                                jsonObject3.put("duration", duration);
+//
+//                                jsonObject2.put("answer", jsonObject3);
+//                              } else {
+//                                jsonObject2.put("answer", value);
+//                              }
+//
+//                              stepRecordCustom.setResult(String.valueOf(jsonObject2));
+//                              Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
+//                              if (currentIdNum == null) {
+//                                stepRecordCustom.setId(1);
+//                              } else {
+//                                stepRecordCustom.setId(currentIdNum.intValue() + 1);
+//                              }
+//                              dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
+//                            } else {
+//                              if (key.equalsIgnoreCase(stepKey)) {
+//                                stepRecordCustom.setStepId(key);
+//                                stepRecordCustom.setTaskStepID(
+//                                    studyId
+//                                        + "_STUDYID_"
+//                                        + responseInfoActiveTaskModel.getActivityId()
+//                                        + "_"
+//                                        + runId
+//                                        + "_"
+//                                        + key);
+//
+//                                stepRecordCustom.setStudyId(studyId);
+//                                stepRecordCustom.setActivityID(
+//                                    studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
+//                                stepRecordCustom.setTaskId(
+//                                    studyId
+//                                        + "_STUDYID_"
+//                                        + responseInfoActiveTaskModel.getActivityId()
+//                                        + "_"
+//                                        + runId);
+//
+//                                stepRecordCustom.setCompleted(completedDate);
+//                                stepRecordCustom.setStarted(completedDate);
+//
+//                                try {
+//                                  Date anchordate = AppController.getLabkeyDateFormat().parse("" + value);
+//                                  value = AppController.getDateFormatForApi().format(anchordate);
+//                                } catch (ParseException e) {
+//                                  Logger.log(e);
+//                                }
+//
+//                                JSONObject jsonObject2 = new JSONObject();
+//                                ActivitiesWS activityObj =
+//                                    dbServiceSubscriber.getActivityObj(
+//                                        responseInfoActiveTaskModel.getActivityId(), studyId, realm);
+//                                if (activityObj.getType().equalsIgnoreCase("task")) {
+//                                  JSONObject jsonObject3 = new JSONObject();
+//                                  jsonObject3.put("value", value);
+//                                  jsonObject3.put("duration", duration);
+//
+//                                  jsonObject2.put("answer", jsonObject3);
+//                                } else {
+//                                  jsonObject2.put("answer", value);
+//                                }
+//
+//                                stepRecordCustom.setResult(String.valueOf(jsonObject2));
+//                                Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
+//                                if (currentIdNum == null) {
+//                                  stepRecordCustom.setId(1);
+//                                } else {
+//                                  stepRecordCustom.setId(currentIdNum.intValue() + 1);
+//                                }
+//                                dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
+//                              }
+//                            }
+//                          }
+//                        }
+//                      }
+//                    }
+//                    if (arrayList.size() > (position + 1)) {
+//                      new ResponseData(
+//                          ((SurveyActivity) context).getStudyId(),
+//                          arrayList.get((position + 1)),
+//                          studies.getParticipantId(),
+//                          position + 1)
+//                          .execute();
+//                    } else {
+//                      addViewStatisticsValues();
+//                      AppController.getHelperProgressDialog().dismissDialog();
+//                    }
+//                  } catch (Exception e) {
+//                    Logger.log(e);
+//                    if (arrayList.size() > (position + 1)) {
+//                      new ResponseData(
+//                          ((SurveyActivity) context).getStudyId(),
+//                          arrayList.get((position + 1)),
+//                          studies.getParticipantId(),
+//                          position + 1)
+//                          .execute();
+//                    } else {
+//                      addViewStatisticsValues();
+//                      AppController.getHelperProgressDialog().dismissDialog();
+//                    }
+//                  }
+//                }
+//                else {
+//                  if (arrayList.size() > (position + 1)) {
+//                    new ResponseData(
+//                        ((SurveyActivity) context).getStudyId(),
+//                        arrayList.get((position + 1)),
+//                        studies.getParticipantId(),
+//                        position + 1)
+//                        .execute();
+//                  } else {
+//                    addViewStatisticsValues();
+//                    AppController.getHelperProgressDialog().dismissDialog();
+//                  }
+//                }
+//              }
+//              else {
+//                addViewStatisticsValues();
+//                AppController.getHelperProgressDialog().dismissDialog();
+//                Toast.makeText(context, context.getString(R.string.unknown_error), Toast.LENGTH_SHORT)
+//                    .show();
+//              }
+//            }
+//          });
+//        }
+//      });
     }
+
+//    @Override
+//    protected String doInBackground(String... params) {
+
+//      ConnectionDetector connectionDetector = new ConnectionDetector(context);
+//      Realm realm = AppController.getRealmobj(context);
+//
+//      String actvityRunId = "";
+//
+////      if (connectionDetector.isConnectingToInternet()) {
+////
+////        HashMap<String, String> header = new HashMap<>();
+////        header.put(
+////                context.getString(R.string.clientToken),
+////                SharedPreferenceHelper.readPreference(
+////                        context, context.getString(R.string.clientToken), ""));
+////        header.put(
+////                "Authorization",
+////                "Bearer "
+////                        + SharedPreferenceHelper.readPreference(
+////                        context, context.getString(R.string.auth), ""));
+////        header.put(
+////                "userId",
+////                SharedPreferenceHelper.readPreference(
+////                        context, context.getString(R.string.userid), ""));
+////        Studies studies = realm.where(Studies.class).equalTo("studyId", studyId).findFirst();
+////        responseModel =
+////                HttpRequest.getRequest(
+////                        Urls.PROCESSRESPONSEDATA
+////                                + AppConfig.APP_ID_KEY
+////                                + "="
+////                                + AppConfig.APP_ID_VALUE
+////                                + "&participantId="
+////                                + participateId
+////                                + "&tokenId="
+////                                + studies.getHashedToken()
+////                                + "&siteId="
+////                                + studies.getSiteId()
+////                                + "&studyId="
+////                                + studies.getStudyId()
+////                                + "&activityId="
+////                                + responseInfoActiveTaskModel.getActivityId()
+////                                + "&questionKey="
+////                                + responseInfoActiveTaskModel.getKey()
+////                                + "&activityVersion="
+////                                + responseInfoActiveTaskModel.getActivityVersion()
+////                                + "&activityRunId="
+////                                + actvityRunId,
+////                        header,
+////                        "");
+////        dbServiceSubscriber.closeRealmObj(realm);
+////        responseCode = responseModel.getResponseCode();
+////        response = responseModel.getResponseData();
+////        if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("timeout")) {
+////          response = "timeout";
+////        } else if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("")) {
+////          response = "error";
+////        } else if (Integer.parseInt(responseCode) >= 201
+////                && Integer.parseInt(responseCode) < 300
+////                && response.equalsIgnoreCase("")) {
+////          response = "No data";
+////        } else if (Integer.parseInt(responseCode) >= 400
+////                && Integer.parseInt(responseCode) < 500
+////                && response.equalsIgnoreCase("http_not_ok")) {
+////          response = "client error";
+////        } else if (Integer.parseInt(responseCode) >= 500
+////                && Integer.parseInt(responseCode) < 600
+////                && response.equalsIgnoreCase("http_not_ok")) {
+////          response = "server error";
+////        } else if (response.equalsIgnoreCase("http_not_ok")) {
+////          response = "Unknown error";
+////        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_UNAUTHORIZED) {
+////          response = "session expired";
+////        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_OK
+////                && !response.equalsIgnoreCase("")) {
+////          response = response;
+////        } else {
+////          response = context.getString(R.string.unknown_error);
+////        }
+////      }
+////      return response;
+//    }
+
+//    @Override
+//    protected void onPreExecute() {
+//      super.onPreExecute();
+//      AppController.getHelperProgressDialog().showProgress(context, "", "", false);
+//      id = responseInfoActiveTaskModel.getActivityId();
+//      stepKey = responseInfoActiveTaskModel.getKey();
+//      Log.e("check", "id " + id);
+//      Log.e("check", "stepKey " + stepKey);
+//      ActivityListData activityListData = dbServiceSubscriber.getActivities(studyId, realm);
+//      if (activityListData != null) {
+//        RealmList<ActivitiesWS> activitiesWSes = activityListData.getActivities();
+//        for (int i = 0; i < activitiesWSes.size(); i++) {
+//          if (activitiesWSes
+//                  .get(i)
+//                  .getActivityId()
+//                  .equalsIgnoreCase(responseInfoActiveTaskModel.getActivityId())) {
+//            if (activitiesWSes.get(i).getType().equalsIgnoreCase("task")) {
+//              id =
+//                      responseInfoActiveTaskModel.getActivityId()
+//                              + responseInfoActiveTaskModel.getKey();
+//              queryParam = "%22count%22,%22Created%22,%22duration%22";
+//            }
+//          }
+//        }
+//      }
+//    }
+
+//    @Override
+//    protected void onPostExecute(String response) {
+//      super.onPostExecute(response);
+//      if (response != null) {
+//        if (response.equalsIgnoreCase("session expired")) {
+//          AppController.getHelperProgressDialog().dismissDialog();
+//          AppController.getHelperSessionExpired(context, "session expired");
+//        } else if (response.equalsIgnoreCase("timeout")) {
+//          addViewStatisticsValues();
+//          AppController.getHelperProgressDialog().dismissDialog();
+//          Toast.makeText(
+//                          context,
+//                          context.getResources().getString(R.string.connection_timeout),
+//                          Toast.LENGTH_SHORT)
+//                  .show();
+//        } else if (Integer.parseInt(responseCode) == 500) {
+//          try {
+//            JSONObject jsonObject = new JSONObject(String.valueOf(responseModel.getResponseData()));
+//            String exception = String.valueOf(jsonObject.get("exception"));
+//            if (exception.contains("Query or table not found")) {
+//              if (arrayList.size() > (position + 1)) {
+//                new ResponseData(
+//                        ((SurveyActivity) context).getStudyId(),
+//                        arrayList.get((position + 1)),
+//                        studies.getParticipantId(),
+//                        position + 1)
+//                        .execute();
+//              } else {
+//                addViewStatisticsValues();
+//                AppController.getHelperProgressDialog().dismissDialog();
+//              }
+//            } else {
+//              addViewStatisticsValues();
+//              AppController.getHelperProgressDialog().dismissDialog();
+//            }
+//          } catch (JSONException e) {
+//            addViewStatisticsValues();
+//            AppController.getHelperProgressDialog().dismissDialog();
+//            Logger.log(e);
+//          }
+//        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_OK) {
+//          try {
+//            SimpleDateFormat simpleDateFormat = AppController.getLabkeyDateFormat();
+//            JSONObject jsonObject = new JSONObject(response);
+//            Log.e("check","response is "+jsonObject);
+//            JSONArray jsonArray = (JSONArray) jsonObject.get("rows");
+//            Gson gson = new Gson();
+//            for (int i = 0; i < jsonArray.length(); i++) {
+//              JSONObject jsonObject1 = new JSONObject(String.valueOf(jsonArray.get(i)));
+//              JSONArray jsonArray1 = (JSONArray) jsonObject1.get("data");
+//              int duration = 0;
+//              Date completedDate = null;
+//              for (int j = 0; j < jsonArray1.length(); j++) {
+//                JSONObject jsonObjectData = (JSONObject) jsonArray1.get(j);
+//                Type type = new TypeToken<Map<String, Object>>() {
+//                }.getType();
+//                Map<String, Object> map = gson.fromJson(String.valueOf(jsonObjectData), type);
+//                StepRecordCustom stepRecordCustom = new StepRecordCustom();
+//                if (completedDate == null) {
+//                  try {
+//                    Object completedDateValMap = gson.toJson(map.get("Created"));
+//                    Map<String, Object> completedDateVal =
+//                            gson.fromJson(String.valueOf(completedDateValMap), type);
+//                    if (completedDateVal != null) {
+//                      completedDate =
+//                              simpleDateFormat.parse(String.valueOf(completedDateVal.get("value")));
+//                      Log.e("check", "date is not null " + completedDate);
+//                    }
+//                  } catch (JsonSyntaxException | ParseException e) {
+//                    Logger.log(e);
+//                    Log.e("check", "date is not null " + completedDate);
+//                  }
+//                }
+//
+//                try {
+//                  Object durationValMap = gson.toJson(map.get("duration"));
+//                  Map<String, Object> completedDateVal =
+//                          gson.fromJson(String.valueOf(durationValMap), type);
+//                  if (completedDateVal != null) {
+//                    duration = (int) Double.parseDouble("" + completedDateVal.get("value"));
+//                  }
+//                } catch (Exception e) {
+//                  Logger.log(e);
+//                }
+//
+//                for (Map.Entry<String, Object> entry : map.entrySet()) {
+//                  String key = entry.getKey();
+//                  String valueobj = gson.toJson(entry.getValue());
+//                  Map<String, Object> vauleMap = gson.fromJson(String.valueOf(valueobj), type);
+//                  Object value = vauleMap.get("value");
+//                  if (!key.equalsIgnoreCase("container")
+//                          && !key.equalsIgnoreCase("ParticipantId")
+//                          && !key.equalsIgnoreCase("EntityId")
+//                          && !key.equalsIgnoreCase("Modified")
+//                          && !key.equalsIgnoreCase("lastIndexed")
+//                          && !key.equalsIgnoreCase("ModifiedBy")
+//                          && !key.equalsIgnoreCase("CreatedBy")
+//                          && !key.equalsIgnoreCase("Key")
+//                          && !key.equalsIgnoreCase("duration")
+//                          && !key.equalsIgnoreCase(stepKey + "Id")
+//                          && !key.equalsIgnoreCase("Created")) {
+//
+//                    int runId =
+//                            dbServiceSubscriber.getActivityRunForStatsAndCharts(
+//                                    responseInfoActiveTaskModel.getActivityId(),
+//                                    studyId,
+//                                    completedDate,
+//                                    realm);
+//
+//                    if (key.equalsIgnoreCase("count")) {
+//                      stepRecordCustom.setStepId(stepKey);
+//                      stepRecordCustom.setTaskStepID(
+//                              studyId
+//                                      + "_STUDYID_"
+//                                      + responseInfoActiveTaskModel.getActivityId()
+//                                      + "_"
+//                                      + runId
+//                                      + "_"
+//                                      + stepKey);
+//
+//                      stepRecordCustom.setStudyId(studyId);
+//                      stepRecordCustom.setActivityID(
+//                              studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
+//                      stepRecordCustom.setTaskId(
+//                              studyId
+//                                      + "_STUDYID_"
+//                                      + responseInfoActiveTaskModel.getActivityId()
+//                                      + "_"
+//                                      + runId);
+//
+//                      stepRecordCustom.setCompleted(completedDate);
+//                      stepRecordCustom.setStarted(completedDate);
+//
+//                      JSONObject jsonObject2 = new JSONObject();
+//                      ActivitiesWS activityObj =
+//                              dbServiceSubscriber.getActivityObj(
+//                                      responseInfoActiveTaskModel.getActivityId(), studyId, realm);
+//                      if (activityObj.getType().equalsIgnoreCase("task")) {
+//                        JSONObject jsonObject3 = new JSONObject();
+//                        jsonObject3.put("value", value);
+//                        jsonObject3.put("duration", duration);
+//
+//                        jsonObject2.put("answer", jsonObject3);
+//                      } else {
+//                        jsonObject2.put("answer", value);
+//                      }
+//
+//                      stepRecordCustom.setResult(String.valueOf(jsonObject2));
+//                      Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
+//                      if (currentIdNum == null) {
+//                        stepRecordCustom.setId(1);
+//                      } else {
+//                        stepRecordCustom.setId(currentIdNum.intValue() + 1);
+//                      }
+//                      dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
+//                    } else {
+//                      if (key.equalsIgnoreCase(stepKey)) {
+//                        stepRecordCustom.setStepId(key);
+//                        stepRecordCustom.setTaskStepID(
+//                                studyId
+//                                        + "_STUDYID_"
+//                                        + responseInfoActiveTaskModel.getActivityId()
+//                                        + "_"
+//                                        + runId
+//                                        + "_"
+//                                        + key);
+//
+//                        stepRecordCustom.setStudyId(studyId);
+//                        stepRecordCustom.setActivityID(
+//                                studyId + "_STUDYID_" + responseInfoActiveTaskModel.getActivityId());
+//                        stepRecordCustom.setTaskId(
+//                                studyId
+//                                        + "_STUDYID_"
+//                                        + responseInfoActiveTaskModel.getActivityId()
+//                                        + "_"
+//                                        + runId);
+//
+//                        stepRecordCustom.setCompleted(completedDate);
+//                        stepRecordCustom.setStarted(completedDate);
+//
+//                        try {
+//                          Date anchordate = AppController.getLabkeyDateFormat().parse("" + value);
+//                          value = AppController.getDateFormatForApi().format(anchordate);
+//                        } catch (ParseException e) {
+//                          Logger.log(e);
+//                        }
+//
+//                        JSONObject jsonObject2 = new JSONObject();
+//                        ActivitiesWS activityObj =
+//                                dbServiceSubscriber.getActivityObj(
+//                                        responseInfoActiveTaskModel.getActivityId(), studyId, realm);
+//                        if (activityObj.getType().equalsIgnoreCase("task")) {
+//                          JSONObject jsonObject3 = new JSONObject();
+//                          jsonObject3.put("value", value);
+//                          jsonObject3.put("duration", duration);
+//
+//                          jsonObject2.put("answer", jsonObject3);
+//                        } else {
+//                          jsonObject2.put("answer", value);
+//                        }
+//
+//                        stepRecordCustom.setResult(String.valueOf(jsonObject2));
+//                        Number currentIdNum = dbServiceSubscriber.getStepRecordCustomId(realm);
+//                        if (currentIdNum == null) {
+//                          stepRecordCustom.setId(1);
+//                        } else {
+//                          stepRecordCustom.setId(currentIdNum.intValue() + 1);
+//                        }
+//                        dbServiceSubscriber.updateStepRecord(context, stepRecordCustom);
+//                      }
+//                    }
+//                  }
+//                }
+//              }
+//            }
+//            if (arrayList.size() > (position + 1)) {
+//              new ResponseData(
+//                      ((SurveyActivity) context).getStudyId(),
+//                      arrayList.get((position + 1)),
+//                      studies.getParticipantId(),
+//                      position + 1)
+//                      .execute();
+//            } else {
+//              addViewStatisticsValues();
+//              AppController.getHelperProgressDialog().dismissDialog();
+//            }
+//          } catch (Exception e) {
+//            Logger.log(e);
+//            if (arrayList.size() > (position + 1)) {
+//              new ResponseData(
+//                      ((SurveyActivity) context).getStudyId(),
+//                      arrayList.get((position + 1)),
+//                      studies.getParticipantId(),
+//                      position + 1)
+//                      .execute();
+//            } else {
+//              addViewStatisticsValues();
+//              AppController.getHelperProgressDialog().dismissDialog();
+//            }
+//          }
+//        } else {
+//          if (arrayList.size() > (position + 1)) {
+//            new ResponseData(
+//                    ((SurveyActivity) context).getStudyId(),
+//                    arrayList.get((position + 1)),
+//                    studies.getParticipantId(),
+//                    position + 1)
+//                    .execute();
+//          } else {
+//            addViewStatisticsValues();
+//            AppController.getHelperProgressDialog().dismissDialog();
+//          }
+//        }
+//      } else {
+//        addViewStatisticsValues();
+//        AppController.getHelperProgressDialog().dismissDialog();
+//        Toast.makeText(context, context.getString(R.string.unknown_error), Toast.LENGTH_SHORT)
+//                .show();
+//      }
+//    }
   }
 
-  @Override
+    private void setErrorMessage(Throwable error, String response, String responseCode) {
+        responseCode = String.valueOf(AppController.getErrorCode(error));
+        response = AppController.getErrorMessage(error);
+        if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("timeout")) {
+            response = "timeout";
+        } else if (responseCode.equalsIgnoreCase("0") && response.equalsIgnoreCase("")) {
+            response = "error";
+        } else if (Integer.parseInt(responseCode) >= 201
+                && Integer.parseInt(responseCode) < 300
+                && response.equalsIgnoreCase("")) {
+            response = "No data";
+        } else if (Integer.parseInt(responseCode) >= 400
+                && Integer.parseInt(responseCode) < 500
+                && response.equalsIgnoreCase("http_not_ok")) {
+            response = "client error";
+        } else if (Integer.parseInt(responseCode) >= 500
+                && Integer.parseInt(responseCode) < 600
+                && response.equalsIgnoreCase("http_not_ok")) {
+            response = "server error";
+        } else if (response.equalsIgnoreCase("http_not_ok")) {
+            response = "Unknown error";
+        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_UNAUTHORIZED) {
+            response = "session expired";
+        } else if (Integer.parseInt(responseCode) == HttpURLConnection.HTTP_OK
+                && !response.equalsIgnoreCase("")) {
+            response = response;
+        } else {
+            response = context.getString(R.string.unknown_error);
+        }
+    }
+
+    @Override
   public void onResume() {
     super.onResume();
     IntentFilter intentFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);

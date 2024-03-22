@@ -30,7 +30,7 @@ public class Urls {
           BuildConfig.BASE_URL_PARTICIPANT_ENROLLMENT_DATASTORE;
   public static String BASE_URL_AUTH_SERVER = BuildConfig.BASE_URL_AUTH_SERVER;
   public static String BASE_URL_RESPONSE_DATASTORE = BuildConfig.BASE_URL_RESPONSE_DATASTORE;
-
+  public static String DEEPLINK_HOST =  FdaApplication.getInstance().getString(R.string.deeplink_host);
   // Auth Server
   public static String LOGIN = "/login";
 

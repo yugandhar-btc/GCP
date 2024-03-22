@@ -17,7 +17,6 @@
         android:paddingLeft="18dp"
         android:paddingRight="18dp"
         app:contentInsetLeft="0dp"
-        app:contentInsetStart="0dp"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light">
 
         <RelativeLayout
@@ -77,7 +76,7 @@
             android:textColor="@color/colorPrimary" />
     </RelativeLayout>
 
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_above="@id/mBottomLayout"
@@ -117,7 +116,7 @@
                 android:background="@color/colorSecondaryBg"
                 android:visibility="gone" />
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/offlineIndicatior"
                 android:layout_width="200dp"
                 android:layout_height="30dp"
@@ -129,9 +128,9 @@
                 android:text="You are offline"
                 android:textColor="@color/white"
                 android:textSize="16dp"
-                android:visibility="gone"></TextView>
+                android:visibility="gone"></androidx.appcompat.widget.AppCompatTextView>
         </RelativeLayout>
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 
 
 </RelativeLayout>

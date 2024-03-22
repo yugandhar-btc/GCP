@@ -26,6 +26,7 @@ import android.os.Build;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Environment;
+import android.util.Log;
 import android.view.View;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -42,6 +43,8 @@ import com.harvard.utils.CustomFirebaseAnalytics;
 import com.harvard.utils.Logger;
 import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.PdfViewerView;
+import com.harvard.utils.version.Android;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -133,20 +136,51 @@ public class GatewayResourcesWebViewActivity extends AppCompatActivity
       webView.setVisibility(View.GONE);
       title.setText(intentTitle);
       // checking the permissions
-      if ((ActivityCompat.checkSelfPermission(
-                  GatewayResourcesWebViewActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
-              != PackageManager.PERMISSION_GRANTED)
-          || (ActivityCompat.checkSelfPermission(
-                  GatewayResourcesWebViewActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-              != PackageManager.PERMISSION_GRANTED)) {
-        String[] permission =
-            new String[] {
-              Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
-            };
-        if (!hasPermissions(permission)) {
-          ActivityCompat.requestPermissions(
-              (Activity) GatewayResourcesWebViewActivity.this, permission, PERMISSION_REQUEST_CODE);
+      if(Build.VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+        if((ActivityCompat.checkSelfPermission(
+            GatewayResourcesWebViewActivity.this,Manifest.permission.READ_MEDIA_AUDIO)
+        != PackageManager.PERMISSION_GRANTED)
+        || (ActivityCompat.checkSelfPermission(
+            GatewayResourcesWebViewActivity.this,Manifest.permission.READ_MEDIA_IMAGES)
+            != PackageManager.PERMISSION_GRANTED)
+        || (ActivityCompat.checkSelfPermission(
+            GatewayResourcesWebViewActivity.this,Manifest.permission.READ_MEDIA_VIDEO)
+            != PackageManager.PERMISSION_GRANTED)) {
+          String[] permission =
+              new String[] {
+                  Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_IMAGES,
+                  Manifest.permission.READ_MEDIA_VIDEO
+              };
+          if (!hasPermissions(permission)) {
+            ActivityCompat.requestPermissions(
+                (Activity) GatewayResourcesWebViewActivity.this, permission, PERMISSION_REQUEST_CODE);
+          } else {
+            finalSharingFile = getAssetsPdfPath();
+            displayPdfView(finalSharingFile.getAbsolutePath());
+          }
         } else {
+          finalSharingFile = getAssetsPdfPath();
+          displayPdfView(finalSharingFile.getAbsolutePath());
+        }
+      } else if(Build.VERSION.SDK_INT < VERSION_CODES.TIRAMISU) {
+        if ((ActivityCompat.checkSelfPermission(
+            GatewayResourcesWebViewActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED)
+            || (ActivityCompat.checkSelfPermission(
+            GatewayResourcesWebViewActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED)) {
+          String[] permission =
+              new String[]{
+                  Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE,
+              };
+          if (!hasPermissions(permission)) {
+            ActivityCompat.requestPermissions(
+                (Activity) GatewayResourcesWebViewActivity.this, permission, PERMISSION_REQUEST_CODE);
+          } else {
+            finalSharingFile = getAssetsPdfPath();
+            displayPdfView(finalSharingFile.getAbsolutePath());
+          }
+        }else {
           finalSharingFile = getAssetsPdfPath();
           displayPdfView(finalSharingFile.getAbsolutePath());
         }
@@ -178,6 +212,7 @@ public class GatewayResourcesWebViewActivity extends AppCompatActivity
   @Override
   public void onRequestPermissionsResult(
       int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     switch (requestCode) {
       case PERMISSION_REQUEST_CODE:
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_DENIED) {
@@ -188,7 +223,6 @@ public class GatewayResourcesWebViewActivity extends AppCompatActivity
               .show();
           finish();
         } else {
-
           ///////// default pdf show
           finalSharingFile = getAssetsPdfPath();
           displayPdfView(finalSharingFile.getAbsolutePath());

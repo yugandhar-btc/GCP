@@ -29,6 +29,7 @@ import android.text.TextPaint;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
+import android.util.Log;
 import android.view.View;
 import android.widget.CompoundButton;
 import android.widget.RelativeLayout;
@@ -40,17 +41,25 @@ import androidx.appcompat.widget.AppCompatCheckBox;
 import androidx.appcompat.widget.AppCompatEditText;
 import androidx.appcompat.widget.AppCompatTextView;
 import androidx.core.content.ContextCompat;
+
 import com.google.firebase.iid.FirebaseInstanceId;
+import com.google.firebase.messaging.FirebaseMessaging;
 import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.StandaloneActivity;
 import com.harvard.studyappmodule.StudyActivity;
+import com.harvard.studyappmodule.SurveyCompleteActivity;
 import com.harvard.usermodule.event.RegisterUserEvent;
 import com.harvard.usermodule.event.UpdateUserProfileEvent;
+import com.harvard.usermodule.model.Apps;
 import com.harvard.usermodule.model.TermsAndConditionData;
+import com.harvard.usermodule.webservicemodel.Info;
 import com.harvard.usermodule.webservicemodel.RegistrationData;
+import com.harvard.usermodule.webservicemodel.Settings;
+import com.harvard.usermodule.webservicemodel.UpdateProfileRequestData;
 import com.harvard.usermodule.webservicemodel.UpdateUserProfileData;
 import com.harvard.utils.AppController;
 import com.harvard.utils.CustomFirebaseAnalytics;
@@ -59,6 +68,9 @@ import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.SetDialogHelper;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import io.realm.Realm;
 import java.util.HashMap;
@@ -98,6 +110,12 @@ public class SignupActivity extends AppCompatActivity
   private String userID;
   private CustomFirebaseAnalytics analyticsInstance;
   private NetworkChangeReceiver networkChangeReceiver;
+  private ParticipantDataStoreAPIInterface anInterface;
+  private UpdateProfileRequestData updateProfileRequestData;
+  private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
+  private UpdateUserProfileData updateUserProfileData;
+  private int code;
+  private String errormsg;
 
   @RequiresApi(api = Build.VERSION_CODES.S)
   @Override
@@ -119,10 +137,33 @@ public class SignupActivity extends AppCompatActivity
       submitBtn.setAlpha(0.5F);
     }
     termsAndConditionData = new TermsAndConditionData();
-    termsAndConditionData.setPrivacy(dbServiceSubscriber.getApps(realm).getPrivacyPolicyUrl());
-    termsAndConditionData.setTerms(dbServiceSubscriber.getApps(realm).getTermsUrl());
-    dbServiceSubscriber.closeRealmObj(realm);
-    analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
+    Apps apps = dbServiceSubscriber.getApps(realm);
+    Log.e("check","app details is "+apps);
+    if(apps == null) {
+      AppController.getHelperProgressDialog().showProgress(this,"","",false);
+      participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+      NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+              .getApps(AppConfig.APP_ID_VALUE),
+          (data) -> {
+            try {
+              AppController.getHelperProgressDialog().dismissDialog();
+              termsAndConditionData.setPrivacy(data.getPrivacyPolicyUrl());
+              termsAndConditionData.setTerms(data.getTermsUrl());
+              dbServiceSubscriber.closeRealmObj(realm);
+              analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
+            } catch (Exception e) {
+              Log.e("TAG", e.getMessage());
+            }
+          }, (error) -> {
+            AppController.getHelperProgressDialog().dismissDialog();
+            Log.e("TAG", AppController.getErrorMessage(error));
+          });
+    } else {
+      termsAndConditionData.setPrivacy(apps.getPrivacyPolicyUrl());
+      termsAndConditionData.setTerms(apps.getTermsUrl());
+      dbServiceSubscriber.closeRealmObj(realm);
+      analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
+    }
   }
 
   private void initializeXmlId() {
@@ -417,24 +458,68 @@ public class SignupActivity extends AppCompatActivity
       HashMap<String, String> params = new HashMap<>();
       params.put("emailId", email.getText().toString());
       params.put("password", password.getText().toString());
-      ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
-          new ParticipantDatastoreConfigEvent(
-              "post",
-              Urls.REGISTER_USER,
-              REGISTRATION_REQUEST,
-              this,
-              RegistrationData.class,
-              params,
-              null,
-              null,
-              false,
-              this);
-      RegisterUserEvent registerUserEvent = new RegisterUserEvent();
-      registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
-      UserModulePresenter userModulePresenter = new UserModulePresenter();
-      userModulePresenter.performRegistration(registerUserEvent);
+      HashMap<String,String> json = new HashMap<>();
+      try {
+        json.put("emailId", email.getText().toString());
+        json.put("password",password.getText().toString());
+      } catch (Exception e) {
+
+      }
+
+//      ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+//          new ParticipantDatastoreConfigEvent(
+//              "post",
+//              Urls.REGISTER_USER,
+//              REGISTRATION_REQUEST,
+//              this,
+//              RegistrationData.class,
+//              params,
+//              null,
+//              null,
+//              false,
+//              this);
+//      RegisterUserEvent registerUserEvent = new RegisterUserEvent();
+//      registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
+//      UserModulePresenter userModulePresenter = new UserModulePresenter();
+//      userModulePresenter.performRegistration(registerUserEvent);
+
+      try {
+        anInterface = new ServiceManager().getInstance().createService(ParticipantDataStoreAPIInterface.class,
+            UrlTypeConstants.ParticipantDataStore);
+        NetworkRequest.performAsyncRequest(anInterface.postRegistrationData(json),
+            (data) -> {
+              confirm(data);
+            }, (error) -> {
+              runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  Toast.makeText(SignupActivity.this, AppController.getErrorMessage(error), Toast.LENGTH_SHORT).show();
+                }
+              });
+            });
+      } catch (Exception e) {
+        Log.e("check", "exception is " + e.getMessage());
+      }
     }
   }
+
+  private void confirm(RegistrationData data) {
+    registrationData = data;
+    if (registrationData != null) {
+      AppController.getHelperProgressDialog().dismissDialog();
+      Intent intent = new Intent(SignupActivity.this, VerificationStepActivity.class);
+      intent.putExtra("email", email.getText().toString());
+      intent.putExtra("type", "signup");
+      startActivity(intent);
+
+    } else {
+      Toast.makeText(
+              this, getResources().getString(R.string.unable_to_signup), Toast.LENGTH_SHORT)
+          .show();
+    }
+  }
+
 
   private boolean checkPasswordContainsEmailID(String email, String password) {
     if (password.contains(email)) {
@@ -592,7 +677,7 @@ public class SignupActivity extends AppCompatActivity
     params.put("Authorization", "Bearer " + userAuth);
     params.put("userId", userID);
 
-    JSONObject jsonObjBody = new JSONObject();
+   /* JSONObject jsonObjBody = new JSONObject();
     JSONObject infoJson = new JSONObject();
     try {
       infoJson.put("os", "android");
@@ -612,9 +697,19 @@ public class SignupActivity extends AppCompatActivity
       jsonObjBody.put("settings", settingJson);
     } catch (JSONException e) {
       Logger.log(e);
-    }
-
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+    }*/
+    updateProfileRequestData = new UpdateProfileRequestData();
+    Settings settings = new Settings();
+    settings.setLocalNotifications(true);
+    settings.setPasscode(true);
+    settings.setRemoteNotifications(true);
+    updateProfileRequestData.setSettings(settings);
+    Info info = new Info();
+    info.setOs("android");
+    info.setAppVersion(BuildConfig.VERSION_NAME + "." + BuildConfig.VERSION_CODE);
+    info.setDeviceToken(deviceToken);
+    updateProfileRequestData.setInfo(info);
+    /*ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "post_object",
             Urls.UPDATE_USER_PROFILE,
@@ -629,7 +724,69 @@ public class SignupActivity extends AppCompatActivity
     UpdateUserProfileEvent updateUserProfileEvent = new UpdateUserProfileEvent();
     updateUserProfileEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performUpdateUserProfile(updateUserProfileEvent);
+    userModulePresenter.performUpdateUserProfile(updateUserProfileEvent);*/
+    updateUserProfileApiCall(params,updateProfileRequestData);
+  }
+
+  private void updateUserProfileApiCall(HashMap<String, String> params, UpdateProfileRequestData updateProfileRequestData) {
+    participantDataStoreAPIInterface = new ServiceManager()
+        .createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+            .updateUserProfile(params, updateProfileRequestData),
+        (data) -> {
+          try {
+            setUpdateProfile(data);
+          } catch (Exception e) {
+            Log.e("TAG", e.getMessage());
+          }
+        }, (error) -> {
+          code = AppController.getErrorCode(error);
+          errormsg = AppController.getErrorMessage(error);
+          if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+            AppController.checkRefreshToken(SignupActivity.this, new AppController.RefreshTokenListener() {
+              @Override
+              public void onRefreshTokenCompleted(String result) {
+                Log.e("check", "response is 2 " + result);
+                if (result.equalsIgnoreCase("sucess")) {
+                  params.put(
+                      "Authorization",
+                      "Bearer "
+                          + AppController.getHelperSharedPreference()
+                          .readPreference(SignupActivity.this, getResources().getString(R.string.auth), ""));
+                  updateUserProfileApiCall(params, updateProfileRequestData);
+                } else {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  Toast.makeText(SignupActivity.this, "session expired", Toast.LENGTH_LONG).show();
+                  AppController.getHelperSessionExpired(SignupActivity.this, "");
+                }
+              }
+            }, UrlTypeConstants.ParticipantDataStore);
+          } else {
+            AppController.getHelperProgressDialog().dismissDialog();
+            Toast.makeText(this, errormsg, Toast.LENGTH_SHORT).show();
+          }
+        });
+
+  }
+
+  private void setUpdateProfile(UpdateUserProfileData updateProfileData) {
+    AppController.getHelperProgressDialog().dismissDialog();
+
+      updateUserProfileData = updateProfileData;
+      if (updateUserProfileData != null) {
+        if (updateUserProfileData.getMessage().equalsIgnoreCase("Profile Updated successfully")) {
+          signup(registrationData);
+        } else {
+          Toast.makeText(
+                          this, getResources().getString(R.string.unable_to_signup), Toast.LENGTH_SHORT)
+                  .show();
+        }
+      } else {
+        Toast.makeText(
+                        this, getResources().getString(R.string.unable_to_signup), Toast.LENGTH_SHORT)
+                .show();
+      }
+    
   }
 
   private class GetFcmRefreshToken extends AsyncTask<String, String, String> {
@@ -638,7 +795,7 @@ public class SignupActivity extends AppCompatActivity
     protected String doInBackground(String... params) {
       String token = "";
       if (FirebaseInstanceId.getInstance().getToken() == null
-          || FirebaseInstanceId.getInstance().getToken().isEmpty()) {
+          || FirebaseInstanceId.getInstance().getToken().equals("")) {
         boolean regIdStatus = false;
         while (!regIdStatus) {
           token =

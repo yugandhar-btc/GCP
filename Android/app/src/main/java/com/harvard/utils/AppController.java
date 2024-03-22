@@ -16,6 +16,7 @@
 
 package com.harvard.utils;
 
+
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.ComponentName;
@@ -29,8 +30,6 @@ import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.security.KeyPairGeneratorSpec;
 import android.util.Base64;
 import android.util.Log;
@@ -42,13 +41,15 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
+import com.harvard.FdaApplication;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.SplashActivity;
 import com.harvard.gatewaymodule.GatewayActivity;
 import com.harvard.notificationmodule.NotificationModuleSubscriber;
@@ -58,8 +59,17 @@ import com.harvard.studyappmodule.StandaloneActivity;
 import com.harvard.studyappmodule.studymodel.Resource;
 import com.harvard.utils.realm.RealmEncryptionHelper;
 import com.harvard.utils.realm.RealmMigrationHelper;
+import com.harvard.webservicemodule.apihelper.AuthServerInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import io.realm.Realm;
 import io.realm.RealmConfiguration;
+import retrofit2.HttpException;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -75,6 +85,7 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -87,6 +98,9 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
@@ -111,27 +125,28 @@ public class AppController {
   public static String loginCallback = "login_callback";
   public static int SchemaVersion = 2;
   private static CustomFirebaseAnalytics analyticsInstance;
+  public static String response = null;
 
-  public static final String STARTING_TAGS =
-      "<\\w+((\\s+\\w+(\\s*=\\s*(?:\".*?\"|'.*?'|[^'\">\\s]+))?)+\\s*|\\s*)>";
+  public static final String STARTING_TAGS = "<\\w+((\\s+\\w+(\\s*=\\s*(?:\".*?\"|'.*?'|[^'\">\\s]+))?)+\\s*|\\s*)>";
+
   public static final String ENDDING_TAGS = "</\\w+>";
   public static final String SELFCLOSINGS_TAGS =
-      "<\\w+((\\s+\\w+(\\s*=\\s*(?:\".*?\"|'.*?'|[^'\">\\s]+))?)+\\s*|\\s*)/>";
+          "<\\w+((\\s+\\w+(\\s*=\\s*(?:\".*?\"|'.*?'|[^'\">\\s]+))?)+\\s*|\\s*)/>";
   public static final String HTML_ENTITIES = "&[a-zA-Z][a-zA-Z0-9]+;";
   public static final Pattern html_Pattern =
-      Pattern.compile(
-          "("
-              + STARTING_TAGS
-              + ".*"
-              + ENDDING_TAGS
-              + ")|("
-              + SELFCLOSINGS_TAGS
-              + ")|("
-              + HTML_ENTITIES
-              + ")",
-          Pattern.DOTALL);
+          Pattern.compile(
+                  "("
+                          + STARTING_TAGS
+                          + ".*"
+                          + ENDDING_TAGS
+                          + ")|("
+                          + SELFCLOSINGS_TAGS
+                          + ")|("
+                          + HTML_ENTITIES
+                          + ")",
+                  Pattern.DOTALL);
   public static String PASSWORD_PATTERN =
-      "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[!\"#$%&'()*+,-.:;<=>?@\\[\\]^_`{|}~])(?=\\S+$).{8,64}$";
+          "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[!\"#$%&'()*+,-.:;<=>?@\\[\\]^_`{|}~])(?=\\S+$).{8,64}$";
 
   public static SharedPreferenceHelper getHelperSharedPreference() {
     if (sharedPreferenceHelper == null) {
@@ -181,14 +196,14 @@ public class AppController {
     dbServiceSubscriber.deleteDb(context);
     try {
       NotificationModuleSubscriber notificationModuleSubscriber =
-          new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+              new NotificationModuleSubscriber(dbServiceSubscriber, realm);
       notificationModuleSubscriber.cancleActivityLocalNotification(context);
       notificationModuleSubscriber.cancleResourcesLocalNotification(context);
     } catch (Exception e) {
       Logger.log(e);
     }
     NotificationModuleSubscriber notificationModuleSubscriber =
-        new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+            new NotificationModuleSubscriber(dbServiceSubscriber, realm);
     notificationModuleSubscriber.cancelNotificationTurnOffNotification(context);
     dbServiceSubscriber.closeRealmObj(realm);
 
@@ -213,7 +228,7 @@ public class AppController {
 
   public static void getHelperHideKeyboard(Activity activity) {
     InputMethodManager imm =
-        (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
+            (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
     View view = activity.getCurrentFocus();
     if (view == null) {
       view = new View(activity);
@@ -223,7 +238,7 @@ public class AppController {
 
   public static void getHelperHideKeyboardContext(Context context, View view) {
     InputMethodManager imm =
-        (InputMethodManager) context.getSystemService(Activity.INPUT_METHOD_SERVICE);
+            (InputMethodManager) context.getSystemService(Activity.INPUT_METHOD_SERVICE);
     imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
   }
 
@@ -238,8 +253,8 @@ public class AppController {
 
   public static void blockscreenshot(Activity activity) {
     activity
-        .getWindow()
-        .setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+            .getWindow()
+            .setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
   }
 
   public static Typeface getTypeface(Context context, String whichType) {
@@ -282,22 +297,26 @@ public class AppController {
     } catch (Exception e) {
       byte[] key = AppController.getkey(context, context.getString(R.string.app_name));
       RealmConfiguration config =
-          new RealmConfiguration.Builder()
-              .encryptionKey(key)
-              .schemaVersion(SchemaVersion)
-              .migration(new RealmMigrationHelper())
-              .build();
+
+              new RealmConfiguration.Builder()
+                      .encryptionKey(key)
+                      .allowWritesOnUiThread(true)
+                      .schemaVersion(SchemaVersion)
+                      .migration(new RealmMigrationHelper())
+                      .build();
+
       Realm.removeDefaultConfiguration();
       Realm.setDefaultConfiguration(config);
       realm = Realm.getDefaultInstance();
       Logger.log(e);
     }
     return realm;
+
   }
 
   private static byte[] getkey(Context context, String keyName) {
     RealmEncryptionHelper realmEncryptionHelper =
-        RealmEncryptionHelper.initHelper(context, keyName);
+            RealmEncryptionHelper.initHelper(context, keyName);
     byte[] key = realmEncryptionHelper.getEncryptKey();
     String s = bytesToHex(key);
     Log.wtf("realm key for " + keyName, "" + s);
@@ -305,27 +324,24 @@ public class AppController {
   }
 
   public static void checkIfAppNameChangeAndMigrate(Context context) {
-    if (!context
-        .getString(R.string.app_name)
-        .equalsIgnoreCase(
-            SharedPreferenceHelper.readPreference(
-                context, "appname", context.getString(R.string.app_name)))) {
-      byte[] key =
-          getkey(
-              context,
-              SharedPreferenceHelper.readPreference(
-                  context, "appname", context.getString(R.string.app_name)));
+
+    if (!context.getString(R.string.app_name).equalsIgnoreCase(SharedPreferenceHelper.readPreference(context, "appname", context.getString(R.string.app_name)))) {
+      byte[] key = getkey(context,
+              SharedPreferenceHelper.readPreference(context, "appname",
+                      context.getString(R.string.app_name)));
+
       RealmConfiguration config =
-          new RealmConfiguration.Builder()
-              .encryptionKey(key)
-              .schemaVersion(SchemaVersion)
-              .migration(new RealmMigrationHelper())
-              .build();
+              new RealmConfiguration.Builder()
+                      .encryptionKey(key)
+                      .allowWritesOnUiThread(true)
+                      .schemaVersion(SchemaVersion)
+                      .migration(new RealmMigrationHelper())
+                      .build();
       Realm realm = Realm.getInstance(config);
       RealmEncryptionHelper.getInstance()
-          .deleteEntry(
-              SharedPreferenceHelper.readPreference(
-                  context, "appname", context.getString(R.string.app_name)));
+              .deleteEntry(
+                      SharedPreferenceHelper.readPreference(
+                              context, "appname", context.getString(R.string.app_name)));
       byte[] NewKey = getkey(context, context.getString(R.string.app_name));
       realm.writeEncryptedCopyTo(new File(context.getFilesDir(), "temp.realm"), NewKey);
       realm.close();
@@ -335,16 +351,34 @@ public class AppController {
     }
     byte[] key = AppController.getkey(context, context.getString(R.string.app_name));
     RealmConfiguration config =
-        new RealmConfiguration.Builder()
-            .encryptionKey(key)
-            .schemaVersion(SchemaVersion)
-            .migration(new RealmMigrationHelper())
-            .build();
+            new RealmConfiguration.Builder()
+                    .encryptionKey(key)
+                    .allowWritesOnUiThread(true)
+                    .schemaVersion(SchemaVersion)
+                    .migration(new RealmMigrationHelper())
+                    .build();
     Realm.removeDefaultConfiguration();
     Realm.setDefaultConfiguration(config);
-    SharedPreferenceHelper.writePreference(
-        context, "appname", context.getString(R.string.app_name));
+
+    SharedPreferenceHelper.writePreference(context, "appname", context.getString(R.string.app_name));
+
+
   }
+
+
+
+  private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+
+  public static String bytesToHex(byte[] bytes) {
+    char[] hexChars = new char[bytes.length * 2];
+    for (int j = 0; j < bytes.length; j++) {
+      int v = bytes[j] & 0xFF;
+      hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+      hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+    }
+    return new String(hexChars);
+  }
+
 
   public static void clearDBfile() {
     if (config != null) {
@@ -453,142 +487,142 @@ public class AppController {
   }
 
   public static AlertDialog upgrade(
-      int resultCode, boolean forceUpgrade, Context context, String version, String message) {
+          int resultCode, boolean forceUpgrade, Context context, String version, String message) {
     AlertDialog alertDialog;
     if (forceUpgrade) {
       alertDialog =
-          setNeutralDialog(
-              resultCode,
-              forceUpgrade,
-              context,
-              context.getResources().getString(R.string.force_upgrade),
-              false,
-              context.getResources().getString(R.string.upgrade),
-              context.getResources().getString(R.string.upgrade),
-              version,
-              message);
+              setNeutralDialog(
+                      resultCode,
+                      forceUpgrade,
+                      context,
+                      context.getResources().getString(R.string.force_upgrade),
+                      false,
+                      context.getResources().getString(R.string.upgrade),
+                      context.getResources().getString(R.string.upgrade),
+                      version,
+                      message);
     } else {
       alertDialog =
-          setNeutralDialog(
-              resultCode,
-              forceUpgrade,
-              context,
-              context.getResources().getString(R.string.normal_upgrade),
-              false,
-              context.getResources().getString(R.string.upgrade),
-              context.getResources().getString(R.string.upgrade),
-              version,
-              message);
+              setNeutralDialog(
+                      resultCode,
+                      forceUpgrade,
+                      context,
+                      context.getResources().getString(R.string.normal_upgrade),
+                      false,
+                      context.getResources().getString(R.string.upgrade),
+                      context.getResources().getString(R.string.upgrade),
+                      version,
+                      message);
     }
     return alertDialog;
   }
 
   public static AlertDialog setNeutralDialog(
-      final int resultCode,
-      final boolean forceUpgrade,
-      final Context context,
-      String message,
-      final boolean finish,
-      String positiveButton,
-      String title,
-      String version,
-      String versionMessage) {
+          final int resultCode,
+          final boolean forceUpgrade,
+          final Context context,
+          String message,
+          final boolean finish,
+          String positiveButton,
+          String title,
+          String version,
+          String versionMessage) {
     if (!forceUpgrade) {
       AlertDialog.Builder alertDialogBuilder =
-          new AlertDialog.Builder(context, R.style.MyAlertDialogStyle);
+              new AlertDialog.Builder(context, R.style.MyAlertDialogStyle);
       alertDialogBuilder.setTitle(title);
       alertDialogBuilder
-          .setMessage(message)
-          .setCancelable(false)
-          .setPositiveButton(
-              positiveButton,
-              new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int id) {
-                  analyticsInstance = CustomFirebaseAnalytics.getInstance(context);
-                  Bundle eventProperties = new Bundle();
-                  eventProperties.putString(
-                      CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                      context.getString(R.string.custom_data_question_ok));
-                  analyticsInstance.logEvent(
-                      CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-                }
-              })
-          .setNegativeButton(
-              context.getResources().getString(R.string.cancel),
-              new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int id) {
-                  Bundle eventProperties = new Bundle();
-                  eventProperties.putString(
-                      CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                      context.getString(R.string.custom_data_question_cancel));
-                  analyticsInstance.logEvent(
-                      CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-                  dialog.dismiss();
-                  if (finish) {
-                    ((Activity) context).finish();
-                  }
-                }
-              });
+              .setMessage(message)
+              .setCancelable(false)
+              .setPositiveButton(
+                      positiveButton,
+                      new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                          analyticsInstance = CustomFirebaseAnalytics.getInstance(context);
+                          Bundle eventProperties = new Bundle();
+                          eventProperties.putString(
+                                  CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                                  context.getString(R.string.custom_data_question_ok));
+                          analyticsInstance.logEvent(
+                                  CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                        }
+                      })
+              .setNegativeButton(
+                      context.getResources().getString(R.string.cancel),
+                      new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                          Bundle eventProperties = new Bundle();
+                          eventProperties.putString(
+                                  CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                                  context.getString(R.string.custom_data_question_cancel));
+                          analyticsInstance.logEvent(
+                                  CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                          dialog.dismiss();
+                          if (finish) {
+                            ((Activity) context).finish();
+                          }
+                        }
+                      });
 
       final AlertDialog alertDialog = alertDialogBuilder.create();
       alertDialog.show();
       alertDialog
-          .getButton(AlertDialog.BUTTON_POSITIVE)
-          .setOnClickListener(
-              new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                  Bundle eventProperties = new Bundle();
-                  eventProperties.putString(
-                      CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                      context.getString(R.string.custom_data_question_ok));
-                  analyticsInstance.logEvent(
-                      CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-                  // Do stuff, possibly set wantToCloseDialog to true then...
-                  final String appPackageName = context.getPackageName();
-                  try {
-                    ((Activity) context)
-                        .startActivityForResult(
-                            new Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("market://details?id=" + appPackageName)),
-                            resultCode);
-                  } catch (android.content.ActivityNotFoundException anfe) {
-                    ((Activity) context)
-                        .startActivityForResult(
-                            new Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse(
-                                    "https://play.google.com/store/apps/details?id="
-                                        + appPackageName)),
-                            resultCode);
-                  }
-                  if (finish) {
-                    ((Activity) context).finish();
-                  }
-                  if (!forceUpgrade) {
-                    alertDialog.dismiss();
-                  }
-                  // else dialog stays open. Make sure you have an obvious way to close the dialog
-                  // especially if you set cancellable to false.
-                }
-              });
+              .getButton(AlertDialog.BUTTON_POSITIVE)
+              .setOnClickListener(
+                      new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                          Bundle eventProperties = new Bundle();
+                          eventProperties.putString(
+                                  CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                                  context.getString(R.string.custom_data_question_ok));
+                          analyticsInstance.logEvent(
+                                  CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                          // Do stuff, possibly set wantToCloseDialog to true then...
+                          final String appPackageName = context.getPackageName();
+                          try {
+                            ((Activity) context)
+                                    .startActivityForResult(
+                                            new Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    Uri.parse("market://details?id=" + appPackageName)),
+                                            resultCode);
+                          } catch (android.content.ActivityNotFoundException anfe) {
+                            ((Activity) context)
+                                    .startActivityForResult(
+                                            new Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    Uri.parse(
+                                                            "https://play.google.com/store/apps/details?id="
+                                                                    + appPackageName)),
+                                            resultCode);
+                          }
+                          if (finish) {
+                            ((Activity) context).finish();
+                          }
+                          if (!forceUpgrade) {
+                            alertDialog.dismiss();
+                          }
+                          // else dialog stays open. Make sure you have an obvious way to close the dialog
+                          // especially if you set cancellable to false.
+                        }
+                      });
       alertDialog
-          .getButton(AlertDialog.BUTTON_NEGATIVE)
-          .setOnClickListener(
-              new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                  Bundle eventProperties = new Bundle();
-                  eventProperties.putString(
-                      CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                      context.getString(R.string.custom_data_question_cancel));
-                  analyticsInstance.logEvent(
-                      CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-                  alertDialog.dismiss();
-                  ((SplashActivity) context).loadsplash();
-                }
-              });
+              .getButton(AlertDialog.BUTTON_NEGATIVE)
+              .setOnClickListener(
+                      new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                          Bundle eventProperties = new Bundle();
+                          eventProperties.putString(
+                                  CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                                  context.getString(R.string.custom_data_question_cancel));
+                          analyticsInstance.logEvent(
+                                  CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                          alertDialog.dismiss();
+                          ((SplashActivity) context).loadsplash();
+                        }
+                      });
       return alertDialog;
     } else {
       AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(context);
@@ -601,33 +635,33 @@ public class AppController {
       TextView desc = (TextView) dialogView.findViewById(R.id.desc);
       desc.setText(versionMessage);
       upgrade.setOnClickListener(
-          new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-              Bundle eventProperties = new Bundle();
-              eventProperties.putString(
-                  CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                  context.getString(R.string.upgrade));
-              analyticsInstance.logEvent(
-                  CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-              final String appPackageName = context.getPackageName();
-              try {
-                ((Activity) context)
-                    .startActivityForResult(
-                        new Intent(
-                            Intent.ACTION_VIEW, Uri.parse("market://details?id=" + appPackageName)),
-                        resultCode);
-              } catch (android.content.ActivityNotFoundException anfe) {
-                ((Activity) context)
-                    .startActivityForResult(
-                        new Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(
-                                "https://play.google.com/store/apps/details?id=" + appPackageName)),
-                        resultCode);
-              }
-            }
-          });
+              new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                  Bundle eventProperties = new Bundle();
+                  eventProperties.putString(
+                          CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                          context.getString(R.string.upgrade));
+                  analyticsInstance.logEvent(
+                          CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                  final String appPackageName = context.getPackageName();
+                  try {
+                    ((Activity) context)
+                            .startActivityForResult(
+                                    new Intent(
+                                            Intent.ACTION_VIEW, Uri.parse("market://details?id=" + appPackageName)),
+                                    resultCode);
+                  } catch (android.content.ActivityNotFoundException anfe) {
+                    ((Activity) context)
+                            .startActivityForResult(
+                                    new Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse(
+                                                    "https://play.google.com/store/apps/details?id=" + appPackageName)),
+                                    resultCode);
+                  }
+                }
+              });
       dialogBuilder.setView(dialogView);
       TextView title1 = (TextView) dialogView.findViewById(R.id.title);
       title1.setText(version);
@@ -709,13 +743,13 @@ public class AppController {
         Calendar end = Calendar.getInstance();
         end.add(Calendar.YEAR, 1);
         KeyPairGeneratorSpec spec =
-            new KeyPairGeneratorSpec.Builder(context)
-                .setAlias(alias)
-                .setSubject(new X500Principal("CN=Sample Name, O=Android Authority"))
-                .setSerialNumber(BigInteger.ONE)
-                .setStartDate(start.getTime())
-                .setEndDate(end.getTime())
-                .build();
+                new KeyPairGeneratorSpec.Builder(context)
+                        .setAlias(alias)
+                        .setSubject(new X500Principal("CN=Sample Name, O=Android Authority"))
+                        .setSerialNumber(BigInteger.ONE)
+                        .setStartDate(start.getTime())
+                        .setEndDate(end.getTime())
+                        .build();
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "AndroidKeyStore");
         generator.initialize(spec);
         generator.generateKeyPair();
@@ -739,7 +773,7 @@ public class AppController {
     try {
       refreshKeys("key");
       KeyStore.PrivateKeyEntry privateKeyEntry =
-          (KeyStore.PrivateKeyEntry) keyStore.getEntry(keystoreValue, null);
+              (KeyStore.PrivateKeyEntry) keyStore.getEntry(keystoreValue, null);
       RSAPublicKey publicKey = (RSAPublicKey) privateKeyEntry.getCertificate().getPublicKey();
 
       Cipher inCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding", "AndroidOpenSSL");
@@ -762,21 +796,21 @@ public class AppController {
     try {
       refreshKeys("key");
       KeyStore.PrivateKeyEntry privateKeyEntry =
-          (KeyStore.PrivateKeyEntry) keyStore.getEntry(keystoreValue, null);
+              (KeyStore.PrivateKeyEntry) keyStore.getEntry(keystoreValue, null);
       RSAPrivateKey privateKey = (RSAPrivateKey) privateKeyEntry.getPrivateKey();
 
       Cipher output = Cipher.getInstance("RSA/ECB/PKCS1Padding", "AndroidOpenSSL");
       output.init(Cipher.DECRYPT_MODE, privateKey);
 
       String cipherText =
-          "FRxCp9t99YTZvWEVewZ3PRMN3Xfc4kV7mlO9dPy8BBNSRz/y89BC+wLIq3/HTN9zKCFcNkO7Xg2h\n"
-              + "eCUULE9MWQb7Sj1pjQR2A81N/kBgHNZjOzsfLLzKYPSMHVHy85xXnXwkY/5Jc5Jo4d8S65DeLY/7\n"
-              + "6bDIhqanYzSAJr4IaQI6tC3mU+SMqA6GyyadNk3R9EwqIjTaXSj4aj/5hDCl37aW807Q3jfbX0XK\n"
-              + "d8dY8zY+w/H3PazNah6/MyQYbN0y1buxIZRyN2C2rZv6F1UA3kb0/u+G/TusZy1fV38kkOC+/pbV\n"
-              + "xh9ouDOLEjkR0yLSgkJKqsFE1PiLs+AS9/C0iQ==";
+              "FRxCp9t99YTZvWEVewZ3PRMN3Xfc4kV7mlO9dPy8BBNSRz/y89BC+wLIq3/HTN9zKCFcNkO7Xg2h\n"
+                      + "eCUULE9MWQb7Sj1pjQR2A81N/kBgHNZjOzsfLLzKYPSMHVHy85xXnXwkY/5Jc5Jo4d8S65DeLY/7\n"
+                      + "6bDIhqanYzSAJr4IaQI6tC3mU+SMqA6GyyadNk3R9EwqIjTaXSj4aj/5hDCl37aW807Q3jfbX0XK\n"
+                      + "d8dY8zY+w/H3PazNah6/MyQYbN0y1buxIZRyN2C2rZv6F1UA3kb0/u+G/TusZy1fV38kkOC+/pbV\n"
+                      + "xh9ouDOLEjkR0yLSgkJKqsFE1PiLs+AS9/C0iQ==";
       CipherInputStream cipherInputStream =
-          new CipherInputStream(
-              new ByteArrayInputStream(Base64.decode(cipherText, Base64.DEFAULT)), output);
+              new CipherInputStream(
+                      new ByteArrayInputStream(Base64.decode(cipherText, Base64.DEFAULT)), output);
       ArrayList<Byte> values = new ArrayList<>();
       int nextByte;
       while ((nextByte = cipherInputStream.read()) != -1) {
@@ -874,7 +908,7 @@ public class AppController {
 
       try {
         encipher.init(
-            Cipher.ENCRYPT_MODE, skey, new IvParameterSpec(Base64.decode(ivBytes, Base64.DEFAULT)));
+                Cipher.ENCRYPT_MODE, skey, new IvParameterSpec(Base64.decode(ivBytes, Base64.DEFAULT)));
       } catch (InvalidAlgorithmParameterException e) {
         Logger.log(e);
       }
@@ -911,16 +945,16 @@ public class AppController {
       byte[] ivBytes = AppController.stringToIvBytes(getStringIvByte);
       try {
         encipher.init(
-            Cipher.DECRYPT_MODE, skey, new IvParameterSpec(Base64.decode(ivBytes, Base64.DEFAULT)));
+                Cipher.DECRYPT_MODE, skey, new IvParameterSpec(Base64.decode(ivBytes, Base64.DEFAULT)));
       } catch (InvalidAlgorithmParameterException e) {
         Logger.log(e);
       }
       CipherInputStream cis = new CipherInputStream(fis, encipher);
       return cis;
     } catch (FileNotFoundException
-        | NoSuchPaddingException
-        | NoSuchAlgorithmException
-        | InvalidKeyException e) {
+            | NoSuchPaddingException
+            | NoSuchAlgorithmException
+            | InvalidKeyException e) {
       Logger.log(e);
     }
     return null;
@@ -956,16 +990,16 @@ public class AppController {
   activityId----> handling SurveyActivitiesFragment duplication other class pass it ""
    */
   public static void pendingService(
-      Context context,
-      int number,
-      String httpMethod,
-      String url,
-      String normalParam,
-      String jsonParam,
-      String serverType,
-      String userProfileId,
-      String studyId,
-      String activityId) {
+          Context context,
+          int number,
+          String httpMethod,
+          String url,
+          String normalParam,
+          String jsonParam,
+          String serverType,
+          String userProfileId,
+          String studyId,
+          String activityId) {
 
     try {
       OfflineData offlineData = new OfflineData();
@@ -1000,14 +1034,14 @@ public class AppController {
     dbServiceSubscriber.deleteDb(context);
     try {
       NotificationModuleSubscriber notificationModuleSubscriber =
-          new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+              new NotificationModuleSubscriber(dbServiceSubscriber, realm);
       notificationModuleSubscriber.cancleActivityLocalNotification(context);
       notificationModuleSubscriber.cancleResourcesLocalNotification(context);
     } catch (Exception e) {
       Logger.log(e);
     }
     NotificationModuleSubscriber notificationModuleSubscriber =
-        new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+            new NotificationModuleSubscriber(dbServiceSubscriber, realm);
     notificationModuleSubscriber.cancelNotificationTurnOffNotification(context);
     dbServiceSubscriber.closeRealmObj(realm);
 
@@ -1044,14 +1078,14 @@ public class AppController {
     dbServiceSubscriber.deleteDb(context);
     try {
       NotificationModuleSubscriber notificationModuleSubscriber =
-          new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+              new NotificationModuleSubscriber(dbServiceSubscriber, realm);
       notificationModuleSubscriber.cancleActivityLocalNotification(context);
       notificationModuleSubscriber.cancleResourcesLocalNotification(context);
     } catch (Exception e) {
       Logger.log(e);
     }
     NotificationModuleSubscriber notificationModuleSubscriber =
-        new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+            new NotificationModuleSubscriber(dbServiceSubscriber, realm);
     notificationModuleSubscriber.cancelNotificationTurnOffNotification(context);
     dbServiceSubscriber.closeRealmObj(realm);
 
@@ -1086,14 +1120,14 @@ public class AppController {
     dbServiceSubscriber.deleteDb(context);
     try {
       NotificationModuleSubscriber notificationModuleSubscriber =
-          new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+              new NotificationModuleSubscriber(dbServiceSubscriber, realm);
       notificationModuleSubscriber.cancleActivityLocalNotification(context);
       notificationModuleSubscriber.cancleResourcesLocalNotification(context);
     } catch (Exception e) {
       Logger.log(e);
     }
     NotificationModuleSubscriber notificationModuleSubscriber =
-        new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+            new NotificationModuleSubscriber(dbServiceSubscriber, realm);
     notificationModuleSubscriber.cancelNotificationTurnOffNotification(context);
     dbServiceSubscriber.closeRealmObj(realm);
 
@@ -1127,7 +1161,7 @@ public class AppController {
       return (new Date().after(starttime) || new Date().equals(starttime));
     } else {
       return (new Date().after(starttime) || new Date().equals(starttime))
-          && new Date().before(endtime);
+              && new Date().before(endtime);
     }
   }
 
@@ -1174,7 +1208,7 @@ public class AppController {
   public static boolean isMyServiceRunning(Context context, Class<?> serviceClass) {
     ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
     for (ActivityManager.RunningServiceInfo service :
-        manager.getRunningServices(Integer.MAX_VALUE)) {
+            manager.getRunningServices(Integer.MAX_VALUE)) {
       if (serviceClass.getName().equals(service.service.getClassName())) {
         return true;
       }
@@ -1182,23 +1216,17 @@ public class AppController {
     return false;
   }
 
-  private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
 
-  public static String bytesToHex(byte[] bytes) {
-    char[] hexChars = new char[bytes.length * 2];
-    for (int j = 0; j < bytes.length; j++) {
-      int v = bytes[j] & 0xFF;
-      hexChars[j * 2] = HEX_ARRAY[v >>> 4];
-      hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
-    }
-    return new String(hexChars);
-  }
+
+
+
 
   public static void renameFile(Context context, String oldName, String newName) {
     File dir = context.getFilesDir();
     if (dir.exists()) {
       File from = new File(dir, oldName);
       File to = new File(dir, newName);
+
       if (from.exists()) {
         from.renameTo(to);
       }
@@ -1220,41 +1248,150 @@ public class AppController {
 
   public static boolean isNetworkAvailable(Context context) {
     ConnectivityManager connectivityManager =
-        (ConnectivityManager) context.getSystemService(context.CONNECTIVITY_SERVICE);
+            (ConnectivityManager) context.getSystemService(context.CONNECTIVITY_SERVICE);
     NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
     return activeNetworkInfo != null && activeNetworkInfo.isConnected();
   }
 
   public static void offlineAlart(Context context) {
     androidx.appcompat.app.AlertDialog.Builder alertDialog =
-        new androidx.appcompat.app.AlertDialog.Builder(
-            context, R.style.Style_Dialog_Rounded_Corner);
+            new androidx.appcompat.app.AlertDialog.Builder(
+                    context, R.style.Style_Dialog_Rounded_Corner);
     alertDialog.setTitle("              You are offline");
     alertDialog.setMessage(
-        "You can still use this section but may miss out on latest content updates");
+            "You can still use this section but may miss out on latest content updates");
     alertDialog.setCancelable(false);
     alertDialog.setPositiveButton(
-        "OK",
-        new DialogInterface.OnClickListener() {
-          @Override
-          public void onClick(DialogInterface dialogInterface, int i) {
-            // Bundle eventProperties = new Bundle();
-            //          eventProperties.putString(
-            //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-            //              getString(R.string.app_update_next_time_ok));
-            //          analyticsInstance.logEvent(
-            //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            dialogInterface.dismiss();
-          }
-        });
+            "OK",
+            new DialogInterface.OnClickListener() {
+              @Override
+              public void onClick(DialogInterface dialogInterface, int i) {
+                // Bundle eventProperties = new Bundle();
+                //          eventProperties.putString(
+                //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                //              getString(R.string.app_update_next_time_ok));
+                //          analyticsInstance.logEvent(
+                //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                dialogInterface.dismiss();
+              }
+            });
     final androidx.appcompat.app.AlertDialog dialog = alertDialog.create();
     dialog.show();
 
     final Button positiveButton =
-        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE);
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE);
     LinearLayout.LayoutParams positiveButtonLL =
-        (LinearLayout.LayoutParams) positiveButton.getLayoutParams();
+            (LinearLayout.LayoutParams) positiveButton.getLayoutParams();
     positiveButtonLL.gravity = Gravity.CENTER;
     positiveButton.setLayoutParams(positiveButtonLL);
+  }
+
+  public static int getErrorCode(Throwable error) {
+    int code = 0;
+    if (error instanceof HttpException) {
+      code = ((HttpException) error).response().code();
+      }
+    return code;
+  }
+  public static String getErrorMessage(Throwable error) {
+    String errormsg = null;
+    int code = 0;
+    String responseMessage = null;
+    Log.e("check","error message is1 "+error.getCause());
+    Log.e("check","error message is2 "+error.getLocalizedMessage());
+    if (error instanceof HttpException) {
+      try {
+        JSONObject object = new JSONObject(((HttpException) error).response().errorBody().string());
+        code = AppController.getErrorCode(error);
+        if(object.has("message")) {
+          responseMessage = object.getString("message");
+        } else if(object.has("error_description")) {
+          responseMessage = object.getString("error_description");
+        } else if(code == 0) {
+          responseMessage = "No internet connection or the server cannot be connected.";
+        }
+//        if(code == 0 && responseMessage.equalsIgnoreCase("timeout")) {
+//          errormsg = "timeout";
+//        } else if (code == 0 && responseMessage.equalsIgnoreCase("")) {
+//          errormsg = "error";
+//        } else if (code == 403 || code == 401) {
+//          errormsg = "session expired";
+//        } else if (code >= 400 && code < 500) {
+//          errormsg = "client error";
+//        } else if (code >= 500 && code < 600) {
+//          errormsg = "server error";
+//        } else {
+          errormsg = responseMessage;
+//        }
+      } catch (JSONException | IOException e) {
+        throw new RuntimeException(e);
+      }
+    } else {
+      errormsg = "No internet connection or the server cannot be connected.";
+    }
+    return errormsg;
+  }
+  public interface RefreshTokenListener {
+    void onRefreshTokenCompleted(String result);
+}
+  public static void checkRefreshToken(Context context, RefreshTokenListener listener, String urlType) {
+    Log.e("check", "url type is " + urlType);
+    if (!urlType.equalsIgnoreCase(UrlTypeConstants.StudyDataStore)) {
+      HashMap<String, String> refreshTokenJsonData = new HashMap();
+      refreshTokenJsonData.put(
+          "refresh_token",
+          AppController.getHelperSharedPreference()
+              .readPreference(context, context.getString(R.string.refreshToken), ""));
+      refreshTokenJsonData.put(
+          "userId",
+          SharedPreferenceHelper.readPreference(
+              context, context.getString(R.string.userid), ""));
+      refreshTokenJsonData.put("redirect_uri", Urls.AUTH_SERVER_REDIRECT_URL);
+      refreshTokenJsonData.put("client_id", BuildConfig.HYDRA_CLIENT_ID);
+      refreshTokenJsonData.put("grant_type", "refresh_token");
+
+      HashMap<String, String> refreshTokenHeader = new HashMap<>();
+      refreshTokenHeader.put("Content-Type", "application/x-www-form-urlencoded");
+      refreshTokenHeader.put("mobilePlatform", "ANDROID");
+      refreshTokenHeader.put("correlationId", FdaApplication.getRandomString());
+
+      AuthServerInterface authServerInterface = new ServiceManager()
+          .createService(AuthServerInterface.class, UrlTypeConstants.AuthServer);
+      RefreshTokenListener finalListener = listener;
+      NetworkRequest.performAsyncRequest(authServerInterface
+              .oauthTokenRequest(refreshTokenHeader, refreshTokenJsonData),
+          (data) -> {
+            if (data.getRefresh_token() != null) {
+              AppController.getHelperSharedPreference()
+                  .writePreference(context, "auth", data.getAccess_token());
+              AppController.getHelperSharedPreference()
+                  .writePreference(context, context.getString(R.string.auth), data.getAccess_token());
+              AppController.getHelperSharedPreference()
+                  .writePreference(
+                      context,
+                      context.getString(R.string.refreshToken),
+                      data.getRefresh_token());
+              response = "sucess";
+              finalListener.onRefreshTokenCompleted(response);
+            } else
+              finalListener.onRefreshTokenCompleted("error");
+          }, (error) -> {
+            int code = getErrorCode(error);
+            String responseMessage = getErrorMessage(error);
+            if (code == 0 && responseMessage.equalsIgnoreCase("timeout")) {
+              response = "timeout";
+            } else if (code == 0 && responseMessage.equalsIgnoreCase("")) {
+              response = "error";
+            } else if (code == 403 || code == 401) {
+              response = "session expired";
+            } else if (code >= 400 && code < 500) {
+              response = "client error";
+            } else if (code >= 500 && code < 600) {
+              response = "server error";
+            }
+            Log.e("check", " error response is" + response);
+            finalListener.onRefreshTokenCompleted(response);
+          });
+    }
   }
 }

@@ -21,11 +21,17 @@ import static com.harvard.studyappmodule.StudyFragment.CONSENT;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.harvard.AppConfig;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.ConsentCompletedActivity;
 import com.harvard.studyappmodule.StandaloneActivity;
@@ -44,10 +50,18 @@ import com.harvard.utils.CustomFirebaseAnalytics;
 import com.harvard.utils.Logger;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.EnrollmentDataStoreInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantEnrollmentDatastoreConfigEvent;
 import io.realm.Realm;
+
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -63,7 +77,7 @@ public class EligibleActivity extends AppCompatActivity implements ApiCall.OnAsy
   private static final int UPDATE_USER_PREFERENCE_RESPONSE_CODE = 200;
   private Realm realm;
   private CustomFirebaseAnalytics analyticsInstance;
-
+  EnrollmentDataStoreInterface enrollmentDataStoreInterface;
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -95,6 +109,7 @@ public class EligibleActivity extends AppCompatActivity implements ApiCall.OnAsy
 
   @Override
   protected void onDestroy() {
+    AppController.getHelperProgressDialog().dismissDialog();
     dbServiceSubscriber.closeRealmObj(realm);
     super.onDestroy();
   }
@@ -167,29 +182,22 @@ public class EligibleActivity extends AppCompatActivity implements ApiCall.OnAsy
         AppController.getHelperSharedPreference()
             .readPreference(this, getResources().getString(R.string.userid), ""));
 
-    JSONObject jsonObject = new JSONObject();
+    HashMap<String,Object> jsonObject = new HashMap<>();
 
-    JSONArray studieslist = new JSONArray();
-    JSONObject studiestatus = new JSONObject();
-    try {
-      studiestatus.put("studyId", getIntent().getStringExtra("studyId"));
-      if (getIntent().getStringExtra("siteId") != null
-              && !getIntent().getStringExtra("siteId").equalsIgnoreCase("")) {
-        studiestatus.put("siteId", getIntent().getStringExtra("siteId"));
-      }
-      studiestatus.put("status", StudyFragment.YET_TO_JOIN);
-      studiestatus.put("userStudyVersion", consentDocumentData.getConsent().getVersion());
-    } catch (JSONException e) {
-      Logger.log(e);
+    ArrayList studieslist = new ArrayList();
+    HashMap<String,Object> studiestatus = new HashMap<>();
+    studiestatus.put("studyId", getIntent().getStringExtra("studyId"));
+    if (getIntent().getStringExtra("siteId") != null
+            && !getIntent().getStringExtra("siteId").equalsIgnoreCase("")) {
+      studiestatus.put("siteId", getIntent().getStringExtra("siteId"));
     }
+    studiestatus.put("status", StudyFragment.YET_TO_JOIN);
+    studiestatus.put("userStudyVersion", consentDocumentData.getConsent().getVersion());
 
-    studieslist.put(studiestatus);
-    try {
-      jsonObject.put("studies", studieslist);
-    } catch (JSONException e) {
-      Logger.log(e);
-    }
-    ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
+    studieslist.add(studiestatus);
+    jsonObject.put("studies", studieslist);
+
+   /* ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
         new ParticipantEnrollmentDatastoreConfigEvent(
             "post_object",
             Urls.UPDATE_STUDY_PREFERENCE,
@@ -205,7 +213,40 @@ public class EligibleActivity extends AppCompatActivity implements ApiCall.OnAsy
     updatePreferenceEvent.setParticipantEnrollmentDatastoreConfigEvent(
         participantEnrollmentDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performUpdateUserPreference(updatePreferenceEvent);
+    userModulePresenter.performUpdateUserPreference(updatePreferenceEvent);*/
+
+    enrollmentDataStoreInterface = new ServiceManager().createService(EnrollmentDataStoreInterface.class, UrlTypeConstants.EnrollmentDataStore);
+    NetworkRequest.performAsyncRequest(enrollmentDataStoreInterface
+                    .updateStudyState(header, jsonObject),
+            (data) -> {
+              try {
+                setStudyState();
+              } catch (Exception e) {
+                Log.e("TAG", e.getMessage());
+              }
+            }, (error) -> {
+              this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  AppController.getHelperProgressDialog().dismissDialog();
+
+                  dbServiceSubscriber.updateStudyPreferenceDB(
+                          EligibleActivity.this, getIntent().getStringExtra("studyId"), StudyFragment.YET_TO_JOIN, "", "", "", "", "");
+
+                }
+              });
+            });
+  }
+
+  private void setStudyState() {
+    this.runOnUiThread(new Runnable() {
+      @Override
+      public void run(){
+        AppController.getHelperProgressDialog().dismissDialog();
+        dbServiceSubscriber.updateStudyPreferenceDB(
+                EligibleActivity.this, getIntent().getStringExtra("studyId"), StudyFragment.YET_TO_JOIN, "", "", "", "", "");
+
+      }});
   }
 
   @Override

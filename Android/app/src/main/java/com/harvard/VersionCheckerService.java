@@ -17,6 +17,8 @@ package com.harvard;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
+import android.util.Log;
+
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.usermodule.UserModulePresenter;
 import com.harvard.usermodule.event.RegisterUserEvent;
@@ -25,11 +27,16 @@ import com.harvard.utils.AppController;
 import com.harvard.utils.Logger;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import java.util.HashMap;
 
 public class VersionCheckerService extends Service implements ApiCall.OnAsyncRequestComplete {
   private static final int APPS_RESPONSE = 100;
+  private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
+  private Apps apps;
 
   @Override
   public IBinder onBind(Intent intent) {
@@ -44,7 +51,7 @@ public class VersionCheckerService extends Service implements ApiCall.OnAsyncReq
   }
 
   private void getAppsInfo() {
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+   /* ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "get",
             Urls.APPS + "?appId=" + AppConfig.APP_ID_VALUE,
@@ -59,7 +66,64 @@ public class VersionCheckerService extends Service implements ApiCall.OnAsyncReq
     RegisterUserEvent registerUserEvent = new RegisterUserEvent();
     registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performRegistration(registerUserEvent);
+    userModulePresenter.performRegistration(registerUserEvent);*/
+    participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+                    .getApps(AppConfig.APP_ID_VALUE),
+            (data) -> {
+              try {
+                setApps(data);
+              } catch (Exception e) {
+                Log.e("TAG", e.getMessage());
+              }
+            }, (error) -> {
+             setErrorResponse();
+            });
+  }
+
+  private void setErrorResponse() {
+    Logger.info("VersionCheckerService", "Failed");
+    stopSelf();
+    Intent intent = new Intent();
+    intent.setAction(BuildConfig.APPLICATION_ID);
+    intent.putExtra("api", "fail");
+    sendBroadcast(intent);
+  }
+
+  private void setApps(Apps appsResponse) {
+
+      apps = appsResponse;
+      if (apps != null && apps.getVersion().getAndroid().getLatestVersion() != null) {
+        DbServiceSubscriber dbServiceSubscriber = new DbServiceSubscriber();
+        apps.setAppId(AppConfig.APP_ID_VALUE);
+        dbServiceSubscriber.saveApps(this, apps);
+
+        if (!Boolean.parseBoolean(apps.getVersion().getAndroid().getForceUpdate())) {
+          String latestVer = apps.getVersion().getAndroid().getLatestVersion();
+          if (!AppController.getHelperSharedPreference().readPreference(this, "latestVersion", "").equals(latestVer)) {
+            AppController.getHelperSharedPreference().writePreference(this, "versionalert", "");
+            AppController.getHelperSharedPreference().writePreference(this, "latestVersion", apps.getVersion().getAndroid().getLatestVersion());
+          }
+
+          if (!AppController.getHelperSharedPreference().readPreference(this, "versionalert", "").equalsIgnoreCase("done")) {
+
+            Intent intent = new Intent();
+            intent.setAction(BuildConfig.APPLICATION_ID);
+            intent.putExtra("api", "success");
+            intent.putExtra("latestVersion", apps.getVersion().getAndroid().getLatestVersion());
+            intent.putExtra("force", apps.getVersion().getAndroid().getForceUpdate());
+            sendBroadcast(intent);
+          }
+        } else {
+          Intent intent = new Intent();
+          intent.setAction(BuildConfig.APPLICATION_ID);
+          intent.putExtra("api", "success");
+          intent.putExtra("latestVersion", apps.getVersion().getAndroid().getLatestVersion());
+          intent.putExtra("force", apps.getVersion().getAndroid().getForceUpdate());
+          sendBroadcast(intent);
+        }
+      }
+
   }
 
   @Override

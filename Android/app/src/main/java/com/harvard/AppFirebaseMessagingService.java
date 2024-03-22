@@ -19,6 +19,7 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -26,8 +27,11 @@ import android.graphics.drawable.Drawable;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 import com.harvard.storagemodule.DbServiceSubscriber;
@@ -40,8 +44,10 @@ import com.harvard.usermodule.webservicemodel.StudyData;
 import com.harvard.usermodule.webservicemodel.UserProfileData;
 import com.harvard.utils.AppController;
 import com.harvard.utils.Logger;
+
 import io.realm.Realm;
 import io.realm.RealmList;
+
 import java.util.Random;
 
 public class AppFirebaseMessagingService extends FirebaseMessagingService {
@@ -68,10 +74,10 @@ public class AppFirebaseMessagingService extends FirebaseMessagingService {
 
   public void handleNotification(RemoteMessage remoteMessage) {
     if (!AppController.getHelperSharedPreference()
-        .readPreference(this, getString(R.string.userid), "")
-        .equalsIgnoreCase("")) {
+            .readPreference(this, getString(R.string.userid), "")
+            .equalsIgnoreCase("")) {
       AppController.getHelperSharedPreference()
-          .writePreference(this, getString(R.string.notification), "true");
+              .writePreference(this, getString(R.string.notification), "true");
       Intent intent = new Intent();
       intent.setAction("com.fda.notificationReceived");
       sendBroadcast(intent);
@@ -81,11 +87,11 @@ public class AppFirebaseMessagingService extends FirebaseMessagingService {
   }
 
   private void sendNotification(
-      String messageBody,
-      PendingIntent pendingIntent,
-      Context context,
-      Realm realm,
-      DbServiceSubscriber dbServiceSubscriber) {
+          String messageBody,
+          PendingIntent pendingIntent,
+          Context context,
+          Realm realm,
+          DbServiceSubscriber dbServiceSubscriber) {
     if (notificationManager == null) {
       notificationManager = NotificationManagerCompat.from(context);
     }
@@ -99,8 +105,8 @@ public class AppFirebaseMessagingService extends FirebaseMessagingService {
     if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
       Drawable drawable = context.getDrawable(notifyIcon);
       icon =
-          Bitmap.createBitmap(
-              drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+              Bitmap.createBitmap(
+                      drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
       Canvas canvas = new Canvas(icon);
       drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
       drawable.draw(canvas);
@@ -109,21 +115,31 @@ public class AppFirebaseMessagingService extends FirebaseMessagingService {
     }
     Uri defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
     NotificationCompat.Builder notificationBuilder =
-        new NotificationCompat.Builder(context)
-            .setSmallIcon(R.drawable.icon)
-            .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
-            .setContentTitle(context.getResources().getString(R.string.app_name))
-            .setContentText(messageBody)
-            .setAutoCancel(true)
-            .setSound(defaultSoundUri)
-            .setContentIntent(pendingIntent)
-            .setChannelId(FdaApplication.NOTIFICATION_CHANNEL_ID_INFO)
-            .setStyle(new NotificationCompat.BigTextStyle().bigText(messageBody))
-            .setGroup("group");
+            new NotificationCompat.Builder(context)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
+                    .setContentTitle(context.getResources().getString(R.string.app_name))
+                    .setContentText(messageBody)
+                    .setAutoCancel(true)
+                    .setSound(defaultSoundUri)
+                    .setContentIntent(pendingIntent)
+                    .setChannelId(FdaApplication.NOTIFICATION_CHANNEL_ID_INFO)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(messageBody))
+                    .setGroup("group");
     Notification notification = notificationBuilder.build();
     Random random = new Random();
     int m = random.nextInt(9999 - 1000) + 1000;
     if (isNotification) {
+      if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        // TODO: Consider calling
+        //    ActivityCompat#requestPermissions
+        // here to request the missing permissions, and then overriding
+        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+        //                                          int[] grantResults)
+        // to handle the case where the user grants the permission. See the documentation
+        // for ActivityCompat#requestPermissions for more details.
+        return;
+      }
       notificationManager.notify(m, notification);
     }
   }

@@ -35,7 +35,6 @@
         android:paddingLeft="18dp"
         android:paddingRight="18dp"
         app:contentInsetLeft="0dp"
-        app:contentInsetStart="0dp"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light">
 
         <RelativeLayout
@@ -149,7 +148,7 @@
         </RelativeLayout>
 
     </LinearLayout>
-    <TextView
+    <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/offlineIndicatior"
         android:layout_width="200dp"
         android:layout_height="30dp"
@@ -162,7 +161,7 @@
         android:textColor="@color/white"
         android:visibility="gone"
         android:textSize="16dp">
-    </TextView>
+    </androidx.appcompat.widget.AppCompatTextView>
     <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/joinButton"
         style="@style/TextType2"

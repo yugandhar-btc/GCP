@@ -17,10 +17,13 @@ package com.harvard.studyappmodule;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -29,14 +32,13 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.internal.LinkedTreeMap;
 import com.harvard.AppConfig;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.activitybuilder.CustomSurveyViewTaskActivity;
+import com.harvard.studyappmodule.activitybuilder.model.Activity;
 import com.harvard.studyappmodule.activitybuilder.model.servicemodel.ActivityObj;
 import com.harvard.studyappmodule.custom.result.StepRecordCustom;
 import com.harvard.studyappmodule.events.ProcessResponseEvent;
-import com.harvard.usermodule.UserModulePresenter;
-import com.harvard.usermodule.event.ActivityStateEvent;
-import com.harvard.usermodule.event.UpdatePreferenceEvent;
 import com.harvard.usermodule.webservicemodel.Activities;
 import com.harvard.usermodule.webservicemodel.LoginData;
 import com.harvard.usermodule.webservicemodel.Studies;
@@ -47,13 +49,19 @@ import com.harvard.utils.Logger;
 import com.harvard.utils.SharedPreferenceHelper;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
-import com.harvard.webservicemodule.events.ParticipantEnrollmentDatastoreConfigEvent;
-import com.harvard.webservicemodule.events.ResponseDatastoreConfigEvent;
+import com.harvard.webservicemodule.apihelper.EnrollmentDataStoreInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ResponseServerInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
+
 import io.realm.Realm;
 import io.realm.RealmResults;
-import java.text.DateFormat;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+import rx.Subscription;
+
+import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -77,6 +85,14 @@ public class SurveyCompleteActivity extends AppCompatActivity
   private double completion = 0;
   private double adherence = 0;
   private CustomFirebaseAnalytics analyticsInstance;
+  ResponseServerInterface responseServerInterface;
+  private Subscription mSBNetworkSubscriptionl;
+  private LoginData loginData;
+  private EnrollmentDataStoreInterface enrollmentDataStoreInterface;
+  private int code;
+  private String errormsg;
+  private RequestBody body;
+  private JsonObject json;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -151,7 +167,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
           SharedPreferenceHelper.readPreference(
               SurveyCompleteActivity.this, getString(R.string.userid), ""));
 
-      ResponseDatastoreConfigEvent responseDatastoreConfigEvent =
+     /* ResponseDatastoreConfigEvent responseDatastoreConfigEvent =
           new ResponseDatastoreConfigEvent(
               "post_object",
               Urls.PROCESS_RESPONSE,
@@ -165,8 +181,8 @@ public class SurveyCompleteActivity extends AppCompatActivity
               this);
       processResponseEvent.setResponseDatastoreConfigEvent(responseDatastoreConfigEvent);
       StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
-      studyModulePresenter.performProcessResponse(processResponseEvent);
-
+      studyModulePresenter.performProcessResponse(processResponseEvent);*/
+      processResponseApiCall(header,getResponseDataJson(activityObj, activities, studies));
     } else {
       AppController.getHelperProgressDialog().dismissDialog();
       Toast.makeText(
@@ -175,10 +191,241 @@ public class SurveyCompleteActivity extends AppCompatActivity
     }
   }
 
-  private JSONObject getResponseDataJson(
+  private void processResponseApiCall(HashMap<String, String> header, HashMap<String, Object> responseDataJson) {
+    responseServerInterface = new ServiceManager().createService(ResponseServerInterface.class, UrlTypeConstants.ResponseDataStore);
+    mSBNetworkSubscriptionl = NetworkRequest.performAsyncRequest(responseServerInterface
+        .getProcessResponse(header,responseDataJson), (data) -> {
+      try {
+        setProcessResponse(data);
+      }catch (Exception e){
+        Log.e("TAG", "error: realm " + e.getMessage());
+      }
+    }, (error) -> {
+      try{
+        code = AppController.getErrorCode(error);
+        errormsg = AppController.getErrorMessage(error);
+        if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+          AppController.checkRefreshToken(SurveyCompleteActivity.this, new AppController.RefreshTokenListener() {
+            @Override
+            public void onRefreshTokenCompleted(String result) {
+              Log.e("check", "response is 2 " + result);
+              if (result.equalsIgnoreCase("sucess")) {
+                header.put(
+                    "Authorization",
+                    "Bearer "
+                        + AppController.getHelperSharedPreference()
+                        .readPreference(SurveyCompleteActivity.this, getResources().getString(R.string.auth), ""));
+                processResponseApiCall(header,responseDataJson);
+              } else {
+                AppController.getHelperProgressDialog().dismissDialog();
+                Toast.makeText(SurveyCompleteActivity.this, "session expired", Toast.LENGTH_LONG).show();
+                AppController.getHelperSessionExpired(SurveyCompleteActivity.this, "");
+              }
+            }
+          },UrlTypeConstants.ResponseDataStore);
+        } else {
+          setErrorResponse(error);
+        }
+      }catch (Exception e){
+        Log.e("TAG", "error response: " + e.getMessage());
+      }
+
+    });
+  }
+
+  private void setErrorResponse(Throwable error) {
+    this.runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+          AppController.getHelperProgressDialog().dismissDialog();
+    String surveyId = getIntent().getStringExtra(CustomSurveyViewTaskActivity.EXTRA_STUDYID);
+    surveyId = surveyId.substring(0, surveyId.lastIndexOf("_"));
+    String[] activityId = surveyId.split("_STUDYID_");
+    ActivityObj activityObj =
+            dbServiceSubscriber.getActivityBySurveyId(
+                    getIntent().getStringExtra(STUDYID), activityId[1], realm);
+
+    RealmResults<Activities> activitiesRealmResults =
+            realm
+                    .where(Activities.class)
+                    .equalTo("studyId", getIntent().getStringExtra(STUDYID))
+                    .findAll();
+    Activities activities = null;
+    for (int i = 0; i < activitiesRealmResults.size(); i++) {
+      if (activitiesRealmResults.get(i).getActivityId().equalsIgnoreCase(activityId[1])) {
+        activities = activitiesRealmResults.get(i);
+      }
+    }
+
+    Studies studies =
+            realm
+                    .where(Studies.class)
+                    .equalTo("studyId", getIntent().getStringExtra(STUDYID))
+                    .findFirst();
+
+    try {
+      int number = dbServiceSubscriber.getUniqueID(realm);
+      if (number == 0) {
+        number = 1;
+      } else {
+        number += 1;
+      }
+      JSONObject json= new JSONObject(getResponseDataJson(activityObj, activities, studies));
+
+      AppController.pendingService(
+          SurveyCompleteActivity.this,
+              number,
+              "post_object",
+              "participant/process-response",
+              "",
+              json.toString(),
+              "ResponseDatastore",
+              "",
+              "",
+              "");
+    } catch (Exception e) {
+      Logger.log(e);
+    }
+
+    // offline data storing for response server finish
+
+    // offline data storing study preference
+    try {
+      int number = dbServiceSubscriber.getUniqueID(realm);
+      if (number == 0) {
+        number = 1;
+      } else {
+        number += 1;
+      }
+
+      // calculate completion and adherence
+      int completed =
+              Integer.parseInt(
+                      AppController.getHelperSharedPreference()
+                              .readPreference(
+                                      SurveyCompleteActivity.this,
+                                      getResources().getString(R.string.completedRuns),
+                                      ""));
+      int missed =
+              Integer.parseInt(
+                      AppController.getHelperSharedPreference()
+                              .readPreference(
+                                      SurveyCompleteActivity.this,
+                                      getResources().getString(R.string.missedRuns),
+                                      ""));
+      int total =
+              Integer.parseInt(
+                      AppController.getHelperSharedPreference()
+                              .readPreference(
+                                      SurveyCompleteActivity.this,
+                                      getResources().getString(R.string.totalRuns),
+                                      ""));
+
+      if ((double) total > 0) {
+        completion = (((double) completed + (double) missed + 1d) / (double) total) * 100d;
+      }
+
+      if (((double) completed + (double) missed + 1d) > 0) {
+        adherence =
+                (((double) completed + 1d) / ((double) completed + (double) missed + 1d)) * 100d;
+      }
+      JSONObject json= new JSONObject(getStudyPreferenceJson("" + (int) completion, "" + (int) adherence).toString());
+
+      AppController.pendingService(
+          SurveyCompleteActivity.this,
+              number,
+              "post_object",
+              "updateStudyState",
+              "",
+              json.toString(),
+              "ParticipantEnrollmentDatastore",
+              "",
+              "",
+              "");
+    } catch (Exception e) {
+      Logger.log(e);
+    }
+    // offline data storing study preference finish
+
+    // Update Db and leave
+
+    int completedRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.COMPLETED_RUN, 0);
+    completedRun = completedRun + 1;
+    int currentRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0);
+    int missedRun = currentRun - completedRun;
+    dbServiceSubscriber.updateActivityPreferenceDB(
+            SurveyCompleteActivity.this,
+            activityId[1],
+            getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
+            getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0),
+            SurveyActivitiesFragment.COMPLETED,
+            getIntent().getIntExtra(CustomSurveyViewTaskActivity.TOTAL_RUN, 0),
+            completedRun,
+            missedRun,
+            getIntent().getStringExtra(CustomSurveyViewTaskActivity.ACTIVITY_VERSION));
+    dbServiceSubscriber.updateActivityRunToDB(
+            SurveyCompleteActivity.this,
+            activityId[1],
+            getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
+            getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0));
+    Intent intent = new Intent();
+    setResult(RESULT_OK, intent);
+    finish();
+      }
+    });
+  }
+
+  private void setProcessResponse(LoginData loginDataResponse) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        AppController.getHelperProgressDialog().dismissDialog();
+
+        loginData = loginDataResponse;
+
+        if (loginData != null) {
+          // calculate completion and adherence
+          int completed =
+              Integer.parseInt(
+                  AppController.getHelperSharedPreference()
+                      .readPreference(
+                          SurveyCompleteActivity.this,
+                          getResources().getString(R.string.completedRuns),
+                          ""));
+          int missed =
+              Integer.parseInt(
+                  AppController.getHelperSharedPreference()
+                      .readPreference(
+                          SurveyCompleteActivity.this,
+                          getResources().getString(R.string.missedRuns),
+                          ""));
+          int total =
+              Integer.parseInt(
+                  AppController.getHelperSharedPreference()
+                      .readPreference(
+                          SurveyCompleteActivity.this,
+                          getResources().getString(R.string.totalRuns),
+                          ""));
+
+          if ((double) total > 0) {
+            completion = (((double) completed + (double) missed + 1d) / (double) total) * 100d;
+          }
+          if (((double) completed + (double) missed + 1d) > 0) {
+            adherence =
+                (((double) completed + 1d) / ((double) completed + (double) missed + 1d)) * 100d;
+          }
+          updateStudyState("" + (int) completion, "" + (int) adherence);
+        } else {
+          AppController.getHelperProgressDialog().dismissDialog();
+        }
+      }
+    });
+  }
+
+  private HashMap<String, Object> getResponseDataJson(
       ActivityObj activityObj, Activities activities, Studies studies) {
     JSONObject responseJson = new JSONObject();
-    JSONObject processResponsejson = new JSONObject();
+    HashMap<String,Object> processResponsejson = new HashMap<>();
     JSONObject activityState = new JSONObject();
     try {
       processResponsejson.put("type", activityObj.getType());
@@ -187,7 +434,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
       processResponsejson.put("applicationId", AppConfig.APP_ID_VALUE);
       processResponsejson.put("siteId", studies.getSiteId());
 
-      JSONObject infoJson = new JSONObject();
+      HashMap<String,Object> infoJson = new HashMap<>();
       infoJson.put("studyId", studies.getStudyId());
       infoJson.put("studyVersion", studies.getVersion());
       infoJson.put("activityId", activities.getActivityId());
@@ -198,6 +445,8 @@ public class SurveyCompleteActivity extends AppCompatActivity
       processResponsejson.put("metadata", infoJson);
       processResponsejson.put(
           "data", generateresult(activityObj, getIntent().getStringExtra(EXTRA_STUDYID)));
+      Log.e("check","data we got is "+
+          generateresult(activityObj, getIntent().getStringExtra(EXTRA_STUDYID)));
 
       responseJson.put("activityResponse", processResponsejson);
 
@@ -205,7 +454,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
       completedRun = completedRun + 1;
       int currentRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0);
       int missedRun = currentRun - completedRun;
-      JSONObject activityRun = new JSONObject();
+      HashMap<String,Integer> activityRun = new HashMap<>();
       activityRun.put("total", getIntent().getIntExtra(CustomSurveyViewTaskActivity.TOTAL_RUN, 0));
       activityRun.put("completed", completedRun);
       activityRun.put("missed", missedRun);
@@ -217,16 +466,16 @@ public class SurveyCompleteActivity extends AppCompatActivity
     return processResponsejson;
   }
 
-  private JSONObject generateresult(ActivityObj activityObj, String stringExtra) {
+  private HashMap generateresult(ActivityObj activityObj, String stringExtra) {
 
     try {
-      JSONObject dataobj = new JSONObject();
+      HashMap<String,Object> dataobj = new HashMap<>();
       dataobj.put("startTime", activityObj.getMetadata().getStartDate());
       dataobj.put("endTime", activityObj.getMetadata().getEndDate());
       dataobj.put("resultType", activityObj.getType());
       dataobj.put("submittedTime", AppController.getDateFormatForApi().format(Calendar.getInstance().getTime()));
 
-      JSONArray resultarray = new JSONArray();
+      ArrayList resultarray = new ArrayList();
       JsonParser jsonParser = new JsonParser();
       RealmResults<StepRecordCustom> stepRecord =
           realm.where(StepRecordCustom.class).equalTo("taskId", stringExtra).findAll();
@@ -239,7 +488,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
               .equalsIgnoreCase(activityObj.getSteps().get(i).getKey())) {
 
             if (!activityObj.getSteps().get(i).getType().equalsIgnoreCase("task")) {
-              JSONObject resultarrobj = new JSONObject();
+              HashMap<String,Object> resultarrobj = new HashMap<>();
               resultarrobj.put("resultType", activityObj.getSteps().get(i).getResultType());
               resultarrobj.put("key", activityObj.getSteps().get(i).getKey());
 
@@ -268,17 +517,17 @@ public class SurveyCompleteActivity extends AppCompatActivity
                 Map<String, Object> map =
                     (Map<String, Object>)
                         parseData(jsonParser.parse(stepRecord.get(j).getResult()));
-                JSONArray jsonArrayMain = new JSONArray();
+                ArrayList jsonArrayMain = new ArrayList();
 
                 int k = 0;
                 boolean update;
                 boolean createResult = true;
                 while (createResult) {
-                  JSONArray jsonArray = new JSONArray();
+                  ArrayList jsonArray = new ArrayList();
                   update = false;
                   for (Map.Entry<String, Object> entry : map.entrySet()) {
                     Map<String, Object> mapEntry = (Map<String, Object>) entry.getValue();
-                    JSONObject jsonObject = new JSONObject();
+                    HashMap<String,Object> jsonObject = new HashMap<>();
                     String identifier = (String) mapEntry.get("identifier");
                     if (k == 0) {
                       if (!identifier.contains("_addMoreEnabled")) {
@@ -317,7 +566,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
                           Object[] objects = (Object[]) o;
                           if (objects.length > 0) {
                             if (objects[0] instanceof Integer) {
-                              JSONArray jsonArray1 = new JSONArray();
+                              ArrayList jsonArray1 = new ArrayList();
                               for (int l = 0; l < objects.length; l++) {
                                 for (int c = 0; c < activityObj.getSteps().size(); c++) {
                                   if (activityObj.getSteps().get(c).getSteps().size() > 0) {
@@ -331,7 +580,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
                                           .get(c1)
                                           .getKey()
                                           .equalsIgnoreCase((String) mapEntry.get("identifier"))) {
-                                        jsonArray1.put(
+                                        jsonArray1.add(
                                             activityObj
                                                 .getSteps()
                                                 .get(c)
@@ -348,14 +597,14 @@ public class SurveyCompleteActivity extends AppCompatActivity
                               }
                               jsonObject.put("value", jsonArray1);
                             } else if (objects[0] instanceof String) {
-                              JSONArray jsonArray1 = new JSONArray();
+                              ArrayList jsonArray1 = new ArrayList();
                               for (int l = 0; l < objects.length; l++) {
-                                jsonArray1.put((String) objects[l]);
+                                jsonArray1.add((String) objects[l]);
                               }
                               jsonObject.put("value", jsonArray1);
                             }
                           } else {
-                            jsonObject.put("value", new JSONArray());
+                            jsonObject.put("value", new ArrayList<>());
                           }
                         } else {
                           jsonObject.put("value", mapEntryResult.get("answer"));
@@ -376,13 +625,13 @@ public class SurveyCompleteActivity extends AppCompatActivity
                             jsonObject.put("skipped", false);
                             formskipped = false;
                           }
-                        } catch (JSONException e) {
+                        } catch (Exception e) {
                           Logger.log(e);
                           resultarrobj.put("skipped", true);
                           jsonObject.put("skipped", true);
                         }
 
-                        jsonArray.put(jsonObject);
+                        jsonArray.add(jsonObject);
                         update = true;
                       }
                     } else if (identifier.contains(k + "_addMoreEnabled")) {
@@ -422,7 +671,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
                         Object[] objects = (Object[]) o;
                         if (objects.length > 0) {
                           if (objects[0] instanceof Integer) {
-                            JSONArray jsonArray1 = new JSONArray();
+                            ArrayList jsonArray1 = new ArrayList();
                             for (int l = 0; l < objects.length; l++) {
                               for (int c = 0; c < activityObj.getSteps().size(); c++) {
                                 if (activityObj.getSteps().get(c).getSteps().size() > 0) {
@@ -436,7 +685,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
                                         .get(c1)
                                         .getKey()
                                         .equalsIgnoreCase((String) mapEntry.get("identifier"))) {
-                                      jsonArray1.put(
+                                      jsonArray1.add(
                                           activityObj
                                               .getSteps()
                                               .get(c)
@@ -453,14 +702,14 @@ public class SurveyCompleteActivity extends AppCompatActivity
                             }
                             jsonObject.put("value", jsonArray1);
                           } else if (objects[0] instanceof String) {
-                            JSONArray jsonArray1 = new JSONArray();
+                            ArrayList jsonArray1 = new ArrayList();
                             for (int l = 0; l < objects.length; l++) {
-                              jsonArray1.put((String) objects[l]);
+                              jsonArray1.add((String) objects[l]);
                             }
                             jsonObject.put("value", jsonArray1);
                           }
                         } else {
-                          jsonObject.put("value", new JSONArray());
+                          jsonObject.put("value", new ArrayList<>());
                         }
                       } else {
                         jsonObject.put("value", mapEntryResult.get("answer"));
@@ -481,37 +730,37 @@ public class SurveyCompleteActivity extends AppCompatActivity
                           jsonObject.put("skipped", false);
                           formskipped = false;
                         }
-                      } catch (JSONException e) {
+                      } catch (Exception e) {
                         Logger.log(e);
                         resultarrobj.put("skipped", true);
                         jsonObject.put("skipped", true);
                       }
 
-                      jsonArray.put(jsonObject);
+                      jsonArray.add(jsonObject);
                       update = true;
                     }
                   }
-                  k = k + jsonArray.length();
+                  k = k + jsonArray.size();
                   if (update) {
-                    jsonArrayMain.put(jsonArray);
+                    jsonArrayMain.add(jsonArray);
                   } else {
                     createResult = false;
                   }
                 }
                 if (formskipped) {
                   resultarrobj.put("skipped", true);
-                  resultarrobj.put("value", new JSONArray());
+                  resultarrobj.put("value", new ArrayList<>());
                 } else {
                   resultarrobj.put("skipped", false);
                   resultarrobj.put("value", jsonArrayMain);
                 }
               }
-              resultarray.put(resultarrobj);
+              resultarray.add(resultarrobj);
 
               dataobj.put("results", resultarray);
             } else {
 
-              JSONObject durationobj = new JSONObject();
+              HashMap<String, Object> durationobj = new HashMap();
               durationobj.put("resultType", "numeric");
               durationobj.put("key", "duration");
               durationobj.put("startTime", null);
@@ -525,7 +774,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
               JSONObject answerjsonobj = activejsonObject.getJSONObject("answer");
               durationobj.put("value", answerjsonobj.getString("duration"));
 
-              JSONObject valueobj = new JSONObject();
+              HashMap<String, Object> valueobj = new HashMap();
               valueobj.put("resultType", "numeric");
               valueobj.put("key", "count");
               valueobj.put("startTime", null);
@@ -537,10 +786,10 @@ public class SurveyCompleteActivity extends AppCompatActivity
               }
               valueobj.put("value", answerjsonobj.getInt("value"));
 
-              resultarray.put(durationobj);
-              resultarray.put(valueobj);
+              resultarray.add(durationobj);
+              resultarray.add(valueobj);
 
-              JSONObject jsonObject = new JSONObject();
+              HashMap jsonObject = new HashMap();
               jsonObject.put("value", resultarray);
               jsonObject.put(
                   "startTime",
@@ -555,19 +804,19 @@ public class SurveyCompleteActivity extends AppCompatActivity
               } else {
                 jsonObject.put("skipped", false);
               }
-              JSONArray jsonArray = new JSONArray();
-              jsonArray.put(jsonObject);
-
+              ArrayList jsonArray = new ArrayList();
+              jsonArray.add(jsonObject);
               dataobj.put("results", jsonArray);
             }
           }
         }
       }
+      Log.e("check","result response is "+dataobj.toString());
       return dataobj;
     } catch (JSONException e) {
       Logger.log(e);
     }
-    return new JSONObject();
+    return new HashMap();
   }
 
   private void initializeXmlId() {
@@ -642,55 +891,62 @@ public class SurveyCompleteActivity extends AppCompatActivity
 
   @Override
   public void onBackPressed() {
-    super.onBackPressed();
+    //super.onBackPressed();
   }
 
   @Override
   public <T> void asyncResponse(T response, int responseCode) {
     if (responseCode == UPDATE_STUDY_PREFERENCE) {
       AppController.getHelperProgressDialog().dismissDialog();
-      String surveyId = getIntent().getStringExtra(CustomSurveyViewTaskActivity.EXTRA_STUDYID);
-      surveyId = surveyId.substring(0, surveyId.lastIndexOf("_"));
-      String[] activityId = surveyId.split("_STUDYID_");
-      int completedRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.COMPLETED_RUN, 0);
-      completedRun = completedRun + 1;
-      int currentRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0);
-      int missedRun = currentRun - completedRun;
-      dbServiceSubscriber.updateActivityPreferenceDB(
-          this,
-          activityId[1],
-          getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
-          getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0),
-          SurveyActivitiesFragment.COMPLETED,
-          getIntent().getIntExtra(CustomSurveyViewTaskActivity.TOTAL_RUN, 0),
-          completedRun,
-          missedRun,
-          getIntent().getStringExtra(CustomSurveyViewTaskActivity.ACTIVITY_VERSION));
-      StudyData studyData = dbServiceSubscriber.getStudyPreferencesListFromDB(realm);
-      Studies studies = null;
-      if (studyData != null) {
-        for (int i = 0; i < studyData.getStudies().size(); i++) {
-          if (studyData
-              .getStudies()
-              .get(i)
-              .getStudyId()
-              .equalsIgnoreCase(getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID))) {
-            studies = studyData.getStudies().get(i);
+      runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          String surveyId = getIntent().getStringExtra(CustomSurveyViewTaskActivity.EXTRA_STUDYID);
+          surveyId = surveyId.substring(0, surveyId.lastIndexOf("_"));
+          String[] activityId = surveyId.split("_STUDYID_");
+          int completedRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.COMPLETED_RUN, 0);
+          completedRun = completedRun + 1;
+          int currentRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0);
+          int missedRun = currentRun - completedRun;
+          dbServiceSubscriber.updateActivityPreferenceDB(
+              SurveyCompleteActivity.this,
+              activityId[1],
+              getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
+              getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0),
+              SurveyActivitiesFragment.COMPLETED,
+              getIntent().getIntExtra(CustomSurveyViewTaskActivity.TOTAL_RUN, 0),
+              completedRun,
+              missedRun,
+              getIntent().getStringExtra(CustomSurveyViewTaskActivity.ACTIVITY_VERSION));
+          StudyData studyData = dbServiceSubscriber.getStudyPreferencesListFromDB(realm);
+          Studies studies = null;
+          if (studyData != null) {
+            for (int i = 0; i < studyData.getStudies().size(); i++) {
+              if (studyData
+                  .getStudies()
+                  .get(i)
+                  .getStudyId()
+                  .equalsIgnoreCase(getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID))) {
+                studies = studyData.getStudies().get(i);
+              }
+            }
           }
+          if (studies != null) {
+            dbServiceSubscriber.updateStudyPreference(SurveyCompleteActivity.this, studies, completion, adherence);
+          }
+          dbServiceSubscriber.updateActivityRunToDB(
+              SurveyCompleteActivity.this,
+              activityId[1],
+              getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
+              getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0));
+          Intent intent = new Intent();
+          setResult(RESULT_OK, intent);
+          finish();
+
         }
-      }
-      if (studies != null) {
-        dbServiceSubscriber.updateStudyPreference(this, studies, completion, adherence);
-      }
-      dbServiceSubscriber.updateActivityRunToDB(
-          this,
-          activityId[1],
-          getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
-          getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0));
-      Intent intent = new Intent();
-      setResult(RESULT_OK, intent);
-      finish();
-    } else if (responseCode == PROCESS_RESPONSE_RESPONSECODE) {
+      });
+    }
+   /* else if (responseCode == PROCESS_RESPONSE_RESPONSECODE) {
       LoginData loginData = (LoginData) response;
       if (loginData != null) {
         // calculate completion and adherence
@@ -727,7 +983,8 @@ public class SurveyCompleteActivity extends AppCompatActivity
       } else {
         AppController.getHelperProgressDialog().dismissDialog();
       }
-    } else {
+    } */
+    else {
       AppController.getHelperProgressDialog().dismissDialog();
     }
   }
@@ -738,7 +995,8 @@ public class SurveyCompleteActivity extends AppCompatActivity
     if (statusCode.equalsIgnoreCase("401")) {
       Toast.makeText(SurveyCompleteActivity.this, errormsg, Toast.LENGTH_SHORT).show();
       AppController.getHelperSessionExpired(SurveyCompleteActivity.this, errormsg);
-    } else if (responseCode == PROCESS_RESPONSE_RESPONSECODE) {
+    }
+   /* else if (responseCode == PROCESS_RESPONSE_RESPONSECODE) {
       String surveyId = getIntent().getStringExtra(CustomSurveyViewTaskActivity.EXTRA_STUDYID);
       surveyId = surveyId.substring(0, surveyId.lastIndexOf("_"));
       String[] activityId = surveyId.split("_STUDYID_");
@@ -869,7 +1127,8 @@ public class SurveyCompleteActivity extends AppCompatActivity
       Intent intent = new Intent();
       setResult(RESULT_OK, intent);
       finish();
-    } else {
+    } */
+    else {
       // offline data storing study preference
       try {
         int number = dbServiceSubscriber.getUniqueID(realm);
@@ -915,7 +1174,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
             this,
             number,
             "post_object",
-            Urls.UPDATE_STUDY_PREFERENCE,
+            "updateStudyState",
             "",
             getStudyPreferenceJson("" + (int) completion, "" + (int) adherence).toString(),
             "ParticipantEnrollmentDatastore",
@@ -967,7 +1226,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
     for (Map.Entry<String, JsonElement> entry : entitySet) {
       if (entry.getValue().isJsonArray()) {
         JsonArray arr = entry.getValue().getAsJsonArray();
-        JSONArray jsonArray = new JSONArray();
+        ArrayList jsonArray = new ArrayList();
 
         for (JsonElement anArr : arr) {
           for (int i = 0;
@@ -979,7 +1238,9 @@ public class SurveyCompleteActivity extends AppCompatActivity
                 JSONObject jsonObject = null;
                 try {
                   jsonObject = new JSONObject(anArr.getAsString());
-                  jsonArray.put(jsonObject);
+                  HashMap hashMap = new Gson().fromJson(String.valueOf(jsonObject), HashMap.class);
+                  jsonArray.add(hashMap.get("other"));
+                  jsonArray.add(hashMap.get("text"));
                 } catch (JSONException e) {
                   Logger.log(e);
                 }
@@ -994,7 +1255,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
                 .get(i)
                 .getValue()
                 .equalsIgnoreCase("" + anArr.getAsString())) {
-              jsonArray.put(
+              jsonArray.add(
                   activityObj
                       .getSteps()
                       .get(position)
@@ -1100,7 +1361,7 @@ public class SurveyCompleteActivity extends AppCompatActivity
         AppController.getHelperSharedPreference()
             .readPreference(this, getResources().getString(R.string.userid), ""));
 
-    ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
+    /*ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
         new ParticipantEnrollmentDatastoreConfigEvent(
             "post_object",
             Urls.UPDATE_STUDY_PREFERENCE,
@@ -1116,7 +1377,104 @@ public class SurveyCompleteActivity extends AppCompatActivity
     updatePreferenceEvent.setParticipantEnrollmentDatastoreConfigEvent(
         participantEnrollmentDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performUpdateUserPreference(updatePreferenceEvent);
+    userModulePresenter.performUpdateUserPreference(updatePreferenceEvent)*/;
+    updateStudyStateApiCall(header, getStudyPreferenceJsonData(completion, adherence));
+  }
+
+  private void updateStudyStateApiCall(HashMap<String, String> header, HashMap<String, Object> studyPreferenceJsonData) {
+    enrollmentDataStoreInterface = new ServiceManager().createService(EnrollmentDataStoreInterface.class, UrlTypeConstants.EnrollmentDataStore);
+    NetworkRequest.performAsyncRequest(enrollmentDataStoreInterface
+            .updateStudyState(header, studyPreferenceJsonData),
+        (data) -> {
+          try {
+            setStudyState();
+          } catch (Exception e) {
+            Log.e("TAG", e.getMessage());
+          }
+        }, (error) -> {
+          this.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+              code = AppController.getErrorCode(error);
+              errormsg = AppController.getErrorMessage(error);
+              if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+                AppController.checkRefreshToken(SurveyCompleteActivity.this, new AppController.RefreshTokenListener() {
+                  @Override
+                  public void onRefreshTokenCompleted(String result) {
+                    Log.e("check", "response is 2 " + result);
+                    if (result.equalsIgnoreCase("sucess")) {
+                      header.put(
+                          "Authorization",
+                          "Bearer "
+                              + AppController.getHelperSharedPreference()
+                              .readPreference(SurveyCompleteActivity.this, getResources().getString(R.string.auth), ""));
+                      updateStudyStateApiCall(header,studyPreferenceJsonData);
+                    } else {
+                      AppController.getHelperProgressDialog().dismissDialog();
+                      Toast.makeText(SurveyCompleteActivity.this, "session expired", Toast.LENGTH_LONG).show();
+                      AppController.getHelperSessionExpired(SurveyCompleteActivity.this, "");
+                    }
+                  }
+                }, UrlTypeConstants.EnrollmentDataStore);
+              }
+            }
+          });
+        });
+
+  }
+
+  private void setStudyState() {
+
+      runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          AppController.getHelperProgressDialog().dismissDialog();
+
+          String surveyId = getIntent().getStringExtra(CustomSurveyViewTaskActivity.EXTRA_STUDYID);
+          surveyId = surveyId.substring(0, surveyId.lastIndexOf("_"));
+          String[] activityId = surveyId.split("_STUDYID_");
+          int completedRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.COMPLETED_RUN, 0);
+          completedRun = completedRun + 1;
+          int currentRun = getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0);
+          int missedRun = currentRun - completedRun;
+          dbServiceSubscriber.updateActivityPreferenceDB(
+                  SurveyCompleteActivity.this,
+                  activityId[1],
+                  getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
+                  getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0),
+                  SurveyActivitiesFragment.COMPLETED,
+                  getIntent().getIntExtra(CustomSurveyViewTaskActivity.TOTAL_RUN, 0),
+                  completedRun,
+                  missedRun,
+                  getIntent().getStringExtra(CustomSurveyViewTaskActivity.ACTIVITY_VERSION));
+          StudyData studyData = dbServiceSubscriber.getStudyPreferencesListFromDB(realm);
+          Studies studies = null;
+          if (studyData != null) {
+            for (int i = 0; i < studyData.getStudies().size(); i++) {
+              if (studyData
+                      .getStudies()
+                      .get(i)
+                      .getStudyId()
+                      .equalsIgnoreCase(getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID))) {
+                studies = studyData.getStudies().get(i);
+              }
+            }
+          }
+          if (studies != null) {
+            dbServiceSubscriber.updateStudyPreference(SurveyCompleteActivity.this, studies, completion, adherence);
+          }
+          dbServiceSubscriber.updateActivityRunToDB(
+                  SurveyCompleteActivity.this,
+                  activityId[1],
+                  getIntent().getStringExtra(CustomSurveyViewTaskActivity.STUDYID),
+                  getIntent().getIntExtra(CustomSurveyViewTaskActivity.RUNID, 0));
+          Intent intent = new Intent();
+          setResult(RESULT_OK, intent);
+          finish();
+
+        }
+      });
+
   }
 
   private JSONObject getStudyPreferenceJson(String completion, String adherence) {
@@ -1143,6 +1501,24 @@ public class SurveyCompleteActivity extends AppCompatActivity
     } catch (JSONException e) {
       Logger.log(e);
     }
+
+    return jsonObject;
+  }
+  private HashMap<String, Object> getStudyPreferenceJsonData(String completion, String adherence) {
+    HashMap<String,Object> jsonObject = new HashMap<>();
+
+    ArrayList studieslist = new ArrayList();
+    HashMap<String,Object> studiestatus = new HashMap<>();
+    Studies studies = dbServiceSubscriber.getStudies(getIntent().getStringExtra(STUDYID), realm);
+
+    studiestatus.put("studyId", getIntent().getStringExtra(STUDYID));
+    studiestatus.put("siteId", studies.getSiteId());
+    studiestatus.put("participantId", studies.getParticipantId());
+    studiestatus.put("completion", completion);
+    studiestatus.put("adherence", adherence);
+
+    studieslist.add(studiestatus);
+    jsonObject.put("studies", studieslist);
 
     return jsonObject;
   }

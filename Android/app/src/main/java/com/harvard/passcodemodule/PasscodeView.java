@@ -105,7 +105,7 @@ public class PasscodeView extends ViewGroup {
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
       TypedValue accentColor = new TypedValue();
-      theme.resolveAttribute(R.attr.colorControlHighlight, accentColor, true);
+      theme.resolveAttribute( androidx.appcompat.R.attr.colorControlHighlight, accentColor, true);
       highlightedColor =
           accentColor.resourceId > 0
               ? getResources().getColor(accentColor.resourceId)

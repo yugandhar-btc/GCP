@@ -29,9 +29,12 @@ import android.os.Build;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.StrictMode;
 import android.text.Html;
 import android.util.Base64;
+import android.util.Log;
 import android.view.View;
 import android.webkit.WebView;
 import android.widget.RelativeLayout;
@@ -52,12 +55,18 @@ import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.PdfViewerView;
 import com.harvard.webservicemodule.apihelper.ConnectionDetector;
 import io.realm.Realm;
+import rx.Observable;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+
 import javax.crypto.CipherInputStream;
 
 public class ResourcesWebViewActivity extends AppCompatActivity
@@ -117,19 +126,28 @@ public class ResourcesWebViewActivity extends AppCompatActivity
       webView.setVisibility(View.GONE);
       titleTv.setText(intentTitle);
       // checking the permissions
-      if ((ActivityCompat.checkSelfPermission(
-                  ResourcesWebViewActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
-              != PackageManager.PERMISSION_GRANTED)
-          || (ActivityCompat.checkSelfPermission(
-                  ResourcesWebViewActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-              != PackageManager.PERMISSION_GRANTED)) {
-        String[] permission =
-            new String[] {
-              Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
-            };
-        if (!hasPermissions(permission)) {
-          ActivityCompat.requestPermissions(
-              (Activity) ResourcesWebViewActivity.this, permission, PERMISSION_REQUEST_CODE);
+      if (Build.VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+        if ((ActivityCompat.checkSelfPermission(
+            ResourcesWebViewActivity.this, Manifest.permission.READ_MEDIA_AUDIO)
+            != PackageManager.PERMISSION_GRANTED)
+            || (ActivityCompat.checkSelfPermission(
+            ResourcesWebViewActivity.this, Manifest.permission.READ_MEDIA_IMAGES)
+            != PackageManager.PERMISSION_GRANTED)
+            || (ActivityCompat.checkSelfPermission(
+            ResourcesWebViewActivity.this, Manifest.permission.READ_MEDIA_VIDEO)
+            != PackageManager.PERMISSION_GRANTED)) {
+          String[] permission =
+              new String[]{
+                  Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_IMAGES,
+                  Manifest.permission.READ_MEDIA_VIDEO
+              };
+          if (!hasPermissions(permission)) {
+            ActivityCompat.requestPermissions(
+                (Activity) ResourcesWebViewActivity.this, permission, PERMISSION_REQUEST_CODE);
+          } else {
+            // offline functionality
+            offLineFunctionality();
+          }
         } else {
           if (connectionDetector.isConnectingToInternet()) {
             // starting new Async Task for downlaoding pdf file
@@ -139,13 +157,37 @@ public class ResourcesWebViewActivity extends AppCompatActivity
             offLineFunctionality();
           }
         }
-      } else {
-        if (connectionDetector.isConnectingToInternet()) {
-          // starting new Async Task for downlaoding pdf file
-          new CreateFileFromBase64(resource.getContent(), CreateFilePath, fileName).execute();
+      } else if (Build.VERSION.SDK_INT < VERSION_CODES.TIRAMISU) {
+        if ((ActivityCompat.checkSelfPermission(
+            ResourcesWebViewActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED)
+            || (ActivityCompat.checkSelfPermission(
+            ResourcesWebViewActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED)) {
+          String[] permission =
+              new String[]{
+                  Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
+              };
+          if (!hasPermissions(permission)) {
+            ActivityCompat.requestPermissions(
+                (Activity) ResourcesWebViewActivity.this, permission, PERMISSION_REQUEST_CODE);
+          } else {
+            if (connectionDetector.isConnectingToInternet()) {
+              // starting new Async Task for downlaoding pdf file
+              new CreateFileFromBase64(resource.getContent(), CreateFilePath, fileName).execute();
+            } else {
+              // offline functionality
+              offLineFunctionality();
+            }
+          }
         } else {
-          // offline functionality
-          offLineFunctionality();
+          if (connectionDetector.isConnectingToInternet()) {
+            // starting new Async Task for downlaoding pdf file
+            new CreateFileFromBase64(resource.getContent(), CreateFilePath, fileName).execute();
+          } else {
+            // offline functionality
+            offLineFunctionality();
+          }
         }
       }
     } else {
@@ -357,67 +399,144 @@ public class ResourcesWebViewActivity extends AppCompatActivity
     }
   }
 
-  class CreateFileFromBase64 extends AsyncTask<String, String, String> {
-
-    /** Before starting background thread Show Progress Bar Dialog. */
+  class CreateFileFromBase64
+//  extends AsyncTask<String, String, String>
+  {
+    /**
+     * Before starting background thread Show Progress Bar Dialog.
+     */
     String downloadUrl = "";
-
     String filePath = "";
     String fileName = "";
 
-    CreateFileFromBase64(String downloadUrl, String filePath, String fileName) {
+    CreateFileFromBase64(String downloadUrl, String filePath, String fileName ) {
       this.downloadUrl = downloadUrl;
       this.filePath = filePath;
       this.fileName = fileName;
     }
 
-    @Override
-    protected void onPreExecute() {
-      super.onPreExecute();
-      AppController.getHelperProgressDialog()
-          .showProgress(ResourcesWebViewActivity.this, "", "", false);
-    }
+//    @Override
+//    public void execute(Runnable runnable) {
+//      AppController.getHelperProgressDialog().showProgress(ResourcesWebViewActivity.this, "", "", false);
+//      try {
+//        Log.e("check", " executor.execute ");
+//        FileOutputStream fos = new FileOutputStream(filePath + fileName + ".pdf");
+//        fos.write(Base64.decode(downloadUrl.split(",")[1], Base64.NO_WRAP));
+//        fos.close();
+//      } catch (Exception e) {
+//        // while downloading time, net got disconnected so delete the file
+//        try {
+//          new File(filePath + fileName + ".pdf").delete();
+//        } catch (Exception e1) {
+//          Logger.log(e1);
+//        }
+//      }
+//      AppController.generateEncryptedConsentPdf(filePath, fileName);
+//      AppController.getHelperProgressDialog().dismissDialog();
+//    }
 
-    /** Downloading file in background thread. */
-    @Override
-    protected String doInBackground(String... url1) {
-      int count;
-      try {
-        FileOutputStream fos = new FileOutputStream(filePath + fileName + ".pdf");
-        fos.write(Base64.decode(downloadUrl.split(",")[1], Base64.NO_WRAP));
-        fos.close();
 
-      } catch (Exception e) {
-        // while downloading time, net got disconnected so delete the file
-        try {
-          new File(filePath + fileName + ".pdf").delete();
-        } catch (Exception e1) {
-          Logger.log(e1);
+
+//    @Override
+//    protected void onPreExecute() {
+//      super.onPreExecute();
+//      AppController.getHelperProgressDialog()
+//          .showProgress(ResourcesWebViewActivity.this, "", "", false);
+//    }
+//
+//    /** Downloading file in background thread. */
+//    @Override
+//    protected String doInBackground(String... url1) {
+//      int count;
+//      try {
+//        FileOutputStream fos = new FileOutputStream(filePath + fileName + ".pdf");
+//        fos.write(Base64.decode(downloadUrl.split(",")[1], Base64.NO_WRAP));
+//        fos.close();
+//
+//      } catch (Exception e) {
+//        // while downloading time, net got disconnected so delete the file
+//        try {
+//          new File(filePath + fileName + ".pdf").delete();
+//        } catch (Exception e1) {
+//          Logger.log(e1);
+//        }
+//      }
+//      AppController.generateEncryptedConsentPdf(filePath, fileName);
+//      return null;
+//    }
+//
+//    /** After completing background task Dismiss the progress dialog. */
+//    @Override
+//    protected void onPostExecute(String url) {
+//      try {
+//        // downlaod success mean file exist else check offline file
+//        File file = new File(filePath + fileName + ".pdf");
+//        if (file.exists()) {
+//          displayPdfView(filePath + fileName + ".pdf");
+//        } else {
+//          // offline functionality
+//          offLineFunctionality();
+//        }
+//      } catch (Exception e) {
+//        Logger.log(e);
+//      }
+//      // dismiss the dialog after the file was downloaded
+//      AppController.getHelperProgressDialog().dismissDialog();
+//    }
+
+    private void execute() {
+      AppController.getHelperProgressDialog().showProgress(ResourcesWebViewActivity.this, "", "", false);
+
+      Executor executor =  Executors.newSingleThreadScheduledExecutor();
+      Handler handler = new Handler(Looper.getMainLooper());
+
+      executor.execute(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            FileOutputStream fos = new FileOutputStream(filePath + fileName + ".pdf");
+            fos.write(Base64.decode(downloadUrl.split(",")[1], Base64.NO_WRAP));
+            fos.close();
+          }
+          catch (Exception e) {
+            // while downloading time, net got disconnected so delete the file
+            try {
+              new File(filePath + fileName + ".pdf").delete();
+            } catch (Exception e1) {
+              Logger.log(e1);
+            }
+          }
+          handler.post(new Runnable() {
+            @Override
+            public void run() {
+              //UI Thread work here
+
+              try {
+                // downlaod success mean file exist else check offline file
+                File file = new File(filePath + fileName + ".pdf");
+                if (file.exists()) {
+                  displayPdfView(file.getAbsolutePath());
+                } else {
+                  // offline functionality
+                  offLineFunctionality();
+                }
+              } catch (Exception e) {
+                Logger.log(e);
+              }
+            }
+          });
         }
-      }
-      AppController.generateEncryptedConsentPdf(filePath, fileName);
-      return null;
-    }
+      });
 
-    /** After completing background task Dismiss the progress dialog. */
-    @Override
-    protected void onPostExecute(String url) {
-      try {
-        // downlaod success mean file exist else check offline file
-        File file = new File(filePath + fileName + ".pdf");
-        if (file.exists()) {
-          displayPdfView(filePath + fileName + ".pdf");
-        } else {
-          // offline functionality
-          offLineFunctionality();
-        }
-      } catch (Exception e) {
-        Logger.log(e);
-      }
       // dismiss the dialog after the file was downloaded
+      AppController.generateEncryptedConsentPdf(filePath, fileName);
       AppController.getHelperProgressDialog().dismissDialog();
     }
   }
+
+
+
+
 
   private void offLineFunctionality() {
     try {

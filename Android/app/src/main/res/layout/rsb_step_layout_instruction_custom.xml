@@ -17,7 +17,7 @@
     android:orientation="vertical"
     >
 
-    <TextView
+    <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/rsb_intruction_title"
         style="@style/Backbone.Survey.Title"
         android:layout_width="match_parent"

@@ -159,7 +159,7 @@ public class TimeIntervalQuestion implements StepBody {
     ViewGroup compactView = (ViewGroup) initViewDefault(inflater, parent);
 
     TextView label =
-        (TextView) inflater.inflate(R.layout.rsb_item_text_view_title_compact, compactView, false);
+        (TextView) inflater.inflate(org.researchstack.backbone.R.layout.rsb_item_text_view_title_compact, compactView, false);
     label.setText(step.getTitle());
 
     compactView.addView(label, 0);

@@ -11,7 +11,7 @@
         android:layout_alignParentBottom="true"
         android:background="@color/colorPrimaryBlack" />
 
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_above="@id/blackView"
@@ -46,9 +46,12 @@
                 <androidx.appcompat.widget.AppCompatTextView
                     android:id="@+id/website"
                     style="@style/TextType2"
+                    android:layout_width="155dp"
+                    android:layout_height="wrap_content"
                     android:layout_alignParentRight="true"
-                    android:layout_marginRight="28dp"
                     android:layout_marginTop="20dp"
+                    android:layout_marginRight="28dp"
+                    android:gravity="center"
                     android:alpha=".5"
                     android:text="@string/websitetxt"
                     android:textColor="@android:color/white" />
@@ -77,5 +80,5 @@
                 android:layout_below="@+id/bgImg"
                 android:layout_centerHorizontal="true" />
         </RelativeLayout>
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 </RelativeLayout>

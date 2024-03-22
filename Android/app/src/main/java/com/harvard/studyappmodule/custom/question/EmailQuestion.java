@@ -48,14 +48,14 @@ public class EmailQuestion implements StepBody {
 
   @Override
   public View getBodyView(int viewType, LayoutInflater inflater, ViewGroup parent) {
-    View body = inflater.inflate(R.layout.rsb_item_edit_text_compact, parent, false);
+    View body = inflater.inflate(org.researchstack.backbone.R.layout.rsb_item_edit_text_compact, parent, false);
 
     editText = (EditText) body.findViewById(R.id.value);
     editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
     if (step.getPlaceholder() != null) {
       editText.setHint(step.getPlaceholder());
     } else {
-      editText.setHint(R.string.rsb_hint_step_body_text);
+      editText.setHint(org.researchstack.backbone.R.string.rsb_hint_step_body_text);
     }
 
     TextView title = (TextView) body.findViewById(R.id.label);

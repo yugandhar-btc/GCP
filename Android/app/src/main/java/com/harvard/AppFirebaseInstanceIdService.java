@@ -15,11 +15,14 @@
 
 package com.harvard;
 
+import androidx.annotation.NonNull;
+
 import com.google.firebase.iid.FirebaseInstanceId;
 import com.google.firebase.iid.FirebaseInstanceIdService;
+import com.google.firebase.messaging.FirebaseMessagingService;
 import com.harvard.utils.AppController;
 
-public class AppFirebaseInstanceIdService extends FirebaseInstanceIdService {
+public class AppFirebaseInstanceIdService  extends FirebaseInstanceIdService {//FirebaseMessagingService{
 
   @Override
   public void onTokenRefresh() {
@@ -29,4 +32,17 @@ public class AppFirebaseInstanceIdService extends FirebaseInstanceIdService {
   }
 
   private void sendRegistrationToServer() {}
+
+  /*@Override
+  public void onNewToken(@NonNull String token) {
+    super.onNewToken(token);
+    //String refreshToken = FirebaseInstanceId.getInstance().getToken();
+    AppController.getHelperSharedPreference().writePreference(this, "deviceToken", token);
+    sendRegistrationToServer(token);
+  }
+
+  private void sendRegistrationToServer(String refreshToken) {
+  }
+*/
+
 }

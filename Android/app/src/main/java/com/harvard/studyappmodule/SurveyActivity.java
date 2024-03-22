@@ -27,6 +27,7 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
@@ -47,6 +48,7 @@ import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
 import com.harvard.FdaApplication;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.notificationmodule.NotificationModuleSubscriber;
 import com.harvard.offlinemodule.model.OfflineData;
 import com.harvard.storagemodule.DbServiceSubscriber;
@@ -62,10 +64,15 @@ import com.harvard.utils.Urls;
 import com.harvard.utils.version.Version;
 import com.harvard.utils.version.VersionChecker;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.AuthServerInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.AuthServerConfigEvent;
 import io.realm.Realm;
 import io.realm.RealmResults;
 import java.util.HashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 public class SurveyActivity extends AppCompatActivity
     implements View.OnClickListener,
@@ -453,31 +460,72 @@ public class SurveyActivity extends AppCompatActivity
                     "Authorization",
                     "Bearer "
                         + SharedPreferenceHelper.readPreference(
-                            SurveyActivity.this, getString(R.string.auth), ""));
+                        SurveyActivity.this, getString(R.string.auth), ""));
                 header.put("correlationId", "" + FdaApplication.getRandomString());
                 header.put("appId", "" + BuildConfig.APP_ID);
                 header.put("mobilePlatform", "ANDROID");
 
-                AuthServerConfigEvent authServerConfigEvent =
-                    new AuthServerConfigEvent(
-                        "post",
-                        Urls.AUTH_SERVICE
-                            + "/"
-                            + SharedPreferenceHelper.readPreference(
-                                SurveyActivity.this, getString(R.string.userid), "")
-                            + Urls.LOGOUT,
-                        LOGOUT_REPSONSECODE,
-                        SurveyActivity.this,
-                        LoginData.class,
-                        params,
-                        header,
-                        null,
-                        false,
-                        SurveyActivity.this);
-                LogoutEvent logoutEvent = new LogoutEvent();
-                logoutEvent.setAuthServerConfigEvent(authServerConfigEvent);
-                UserModulePresenter userModulePresenter = new UserModulePresenter();
-                userModulePresenter.performLogout(logoutEvent);
+//                AuthServerConfigEvent authServerConfigEvent =
+//                    new AuthServerConfigEvent(
+//                        "post",
+//                        Urls.AUTH_SERVICE
+//                            + "/"
+//                            + SharedPreferenceHelper.readPreference(
+//                                SurveyActivity.this, getString(R.string.userid), "")
+//                            + Urls.LOGOUT,
+//                        LOGOUT_REPSONSECODE,
+//                        SurveyActivity.this,
+//                        LoginData.class,
+//                        params,
+//                        header,
+//                        null,
+//                        false,
+//                        SurveyActivity.this);
+//                LogoutEvent logoutEvent = new LogoutEvent();
+//                logoutEvent.setAuthServerConfigEvent(authServerConfigEvent);
+//                UserModulePresenter userModulePresenter = new UserModulePresenter();
+//                userModulePresenter.performLogout(logoutEvent);
+                AuthServerInterface authServerInterface = new ServiceManager().createService(AuthServerInterface.class,
+                    UrlTypeConstants.AuthServer);
+                NetworkRequest.performAsyncRequest(authServerInterface.logout(SharedPreferenceHelper.readPreference(
+                        SurveyActivity.this, getString(R.string.userid), ""), header),
+                    (data) -> {
+                      runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                          Toast.makeText(SurveyActivity.this, getResources().getString(R.string.signed_out), Toast.LENGTH_SHORT)
+                              .show();
+                          SharedPreferenceHelper.deletePreferences(SurveyActivity.this);
+                          // delete passcode from keystore
+                          String pass = AppController.refreshKeys("passcode");
+                          if (pass != null) {
+                            AppController.deleteKey("passcode_" + pass);
+                          }
+
+                          try {
+                            NotificationModuleSubscriber notificationModuleSubscriber =
+                                new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+                            notificationModuleSubscriber.cancleActivityLocalNotification(SurveyActivity.this);
+                            notificationModuleSubscriber.cancleResourcesLocalNotification(SurveyActivity.this);
+                          } catch (Exception e) {
+                            Logger.log(e);
+                          }
+                          // Call AsyncTask
+                          new ClearNotification().execute();
+
+                        }
+                      });
+                    }, (error) -> {
+                      runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                          String errormsg = AppController.getErrorMessage(error);
+                          AppController.getHelperProgressDialog().dismissDialog();
+                          Toast.makeText(SurveyActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+                        }
+                      });
+                    });
+
               }
             });
 
@@ -557,69 +605,66 @@ public class SurveyActivity extends AppCompatActivity
   @Override
   public void onClick(View view) {
     Bundle eventProperties = new Bundle();
-    switch (view.getId()) {
-      case R.id.myDashboardButtonLayout:
-        if (previousValue != R.id.myDashboardButtonLayout) {
-          previousValue = R.id.myDashboardButtonLayout;
-          eventProperties.putString(
-              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-              getString(R.string.dashboard_label));
-          analyticsInstance.logEvent(
-              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-          dashboardButton.setBackgroundResource(R.drawable.dashboard_blue_active);
-          activitiesButton.setBackgroundResource(R.drawable.activities_grey);
-          resourcesButton.setBackgroundResource(R.drawable.resources_grey);
-          dashboardButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimary));
-          activitiesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
-          resourcesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
-          getSupportFragmentManager()
-              .beginTransaction()
-              .replace(R.id.frameLayoutContainer, surveyDashboardFragment, "fragment")
-              .commit();
-        }
-        break;
-
-      case R.id.mActivitiesButtonLayout:
-        if (previousValue != R.id.mActivitiesButtonLayout) {
-          previousValue = R.id.mActivitiesButtonLayout;
-          eventProperties.putString(
-              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-              getString(R.string.activities_label));
-          analyticsInstance.logEvent(
-              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-          dashboardButton.setBackgroundResource(R.drawable.dashboard_grey);
-          activitiesButton.setBackgroundResource(R.drawable.activities_blue_active);
-          resourcesButton.setBackgroundResource(R.drawable.resources_grey);
-          dashboardButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
-          activitiesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimary));
-          resourcesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
-          getSupportFragmentManager()
-              .beginTransaction()
-              .replace(R.id.frameLayoutContainer, surveyActivitiesFragment, "fragment")
-              .commit();
-        }
-        break;
-
-      case R.id.mResourcesButtonLayout:
-        if (previousValue != R.id.mResourcesButtonLayout) {
-          previousValue = R.id.mResourcesButtonLayout;
-          eventProperties.putString(
-              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-              getString(R.string.resources_label));
-          analyticsInstance.logEvent(
-              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-          dashboardButton.setBackgroundResource(R.drawable.dashboard_grey);
-          activitiesButton.setBackgroundResource(R.drawable.activities_grey);
-          resourcesButton.setBackgroundResource(R.drawable.resources_blue_active);
-          dashboardButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
-          activitiesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
-          resourcesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimary));
-          getSupportFragmentManager()
-              .beginTransaction()
-              .replace(R.id.frameLayoutContainer, surveyResourcesFragment, "fragment")
-              .commit();
-        }
-        break;
+    int viewId = view.getId();
+    if(viewId == R.id.myDashboardButtonLayout){
+      if (previousValue != R.id.myDashboardButtonLayout) {
+        previousValue = R.id.myDashboardButtonLayout;
+        eventProperties.putString(
+                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                getString(R.string.dashboard_label));
+        analyticsInstance.logEvent(
+                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+        dashboardButton.setBackgroundResource(R.drawable.dashboard_blue_active);
+        activitiesButton.setBackgroundResource(R.drawable.activities_grey);
+        resourcesButton.setBackgroundResource(R.drawable.resources_grey);
+        dashboardButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimary));
+        activitiesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
+        resourcesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
+        getSupportFragmentManager()
+                .beginTransaction()
+                .replace(R.id.frameLayoutContainer, surveyDashboardFragment, "fragment")
+                .commit();
+      }
+    }
+    else if(viewId == R.id.mActivitiesButtonLayout){
+      if (previousValue != R.id.mActivitiesButtonLayout) {
+        previousValue = R.id.mActivitiesButtonLayout;
+        eventProperties.putString(
+                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                getString(R.string.activities_label));
+        analyticsInstance.logEvent(
+                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+        dashboardButton.setBackgroundResource(R.drawable.dashboard_grey);
+        activitiesButton.setBackgroundResource(R.drawable.activities_blue_active);
+        resourcesButton.setBackgroundResource(R.drawable.resources_grey);
+        dashboardButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
+        activitiesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimary));
+        resourcesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
+        getSupportFragmentManager()
+                .beginTransaction()
+                .replace(R.id.frameLayoutContainer, surveyActivitiesFragment, "fragment")
+                .commit();
+      }
+    }
+    else if(viewId == R.id.mResourcesButtonLayout){
+      if (previousValue != R.id.mResourcesButtonLayout) {
+        previousValue = R.id.mResourcesButtonLayout;
+        eventProperties.putString(
+                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                getString(R.string.resources_label));
+        analyticsInstance.logEvent(
+                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+        dashboardButton.setBackgroundResource(R.drawable.dashboard_grey);
+        activitiesButton.setBackgroundResource(R.drawable.activities_grey);
+        resourcesButton.setBackgroundResource(R.drawable.resources_blue_active);
+        dashboardButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
+        activitiesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimaryBlack));
+        resourcesButtonLabel.setTextColor(getResources().getColor(R.color.colorPrimary));
+        getSupportFragmentManager()
+                .beginTransaction()
+                .replace(R.id.frameLayoutContainer, surveyResourcesFragment, "fragment")
+                .commit();
+      }
     }
   }
 
@@ -731,38 +776,66 @@ public class SurveyActivity extends AppCompatActivity
     }
   }
 
-  private class ClearNotification extends AsyncTask<String, Void, String> {
+  private class ClearNotification {
+//      extends AsyncTask<String, Void, String>
+        Executor executor = Executors.newSingleThreadScheduledExecutor();
+        Handler handler = new Handler(Looper.myLooper());
 
-    @Override
-    protected String doInBackground(String... params) {
-      try {
-        NotificationModuleSubscriber notificationModuleSubscriber =
-            new NotificationModuleSubscriber(dbServiceSubscriber, realm);
-        notificationModuleSubscriber.cancleActivityLocalNotification(SurveyActivity.this);
-        notificationModuleSubscriber.cancleResourcesLocalNotification(SurveyActivity.this);
-      } catch (Exception e) {
-        Logger.log(e);
-      }
-      dbServiceSubscriber.deleteDb(SurveyActivity.this);
 
-      return "";
-    }
+        private void execute() {
+          AppController.getHelperProgressDialog().showProgress(SurveyActivity.this, "", "", false);
+          executor.execute(() -> {
+            try {
+              NotificationModuleSubscriber notificationModuleSubscriber =
+                  new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+              notificationModuleSubscriber.cancleActivityLocalNotification(SurveyActivity.this);
+              notificationModuleSubscriber.cancleResourcesLocalNotification(SurveyActivity.this);
+            } catch (Exception e) {
+              Logger.log(e);
+            }
+            dbServiceSubscriber.deleteDb(SurveyActivity.this);
 
-    @Override
-    protected void onPostExecute(String result) {
-      AppController.getHelperProgressDialog().dismissDialog();
+            handler.post(() -> {
+              AppController.getHelperProgressDialog().dismissDialog();
       // clear notifications from notification tray
-      NotificationManagerCompat notificationManager =
-          NotificationManagerCompat.from(SurveyActivity.this);
-      notificationManager.cancelAll();
-      //      Toast.makeText(SurveyActivity.this, R.string.signed_out, Toast.LENGTH_SHORT).show();
-      signout();
-    }
+              NotificationManagerCompat notificationManager =
+                  NotificationManagerCompat.from(SurveyActivity.this);
+              notificationManager.cancelAll();
+//            Toast.makeText(SurveyActivity.this, R.string.signed_out, Toast.LENGTH_SHORT).show();
+              signout();
+            });
+          });
+        }
+//    @Override
+//    protected String doInBackground(String... params) {
+//      try {
+//        NotificationModuleSubscriber notificationModuleSubscriber =
+//            new NotificationModuleSubscriber(dbServiceSubscriber, realm);
+//        notificationModuleSubscriber.cancleActivityLocalNotification(SurveyActivity.this);
+//        notificationModuleSubscriber.cancleResourcesLocalNotification(SurveyActivity.this);
+//      } catch (Exception e) {
+//        Logger.log(e);
+//      }
+//      dbServiceSubscriber.deleteDb(SurveyActivity.this);
+//
+//      return "";
+//    }
 
-    @Override
-    protected void onPreExecute() {
-      AppController.getHelperProgressDialog().showProgress(SurveyActivity.this, "", "", false);
-    }
+//    @Override
+//    protected void onPostExecute(String result) {
+//      AppController.getHelperProgressDialog().dismissDialog();
+//      // clear notifications from notification tray
+//      NotificationManagerCompat notificationManager =
+//          NotificationManagerCompat.from(SurveyActivity.this);
+//      notificationManager.cancelAll();
+//      //      Toast.makeText(SurveyActivity.this, R.string.signed_out, Toast.LENGTH_SHORT).show();
+//      signout();
+//    }
+
+//    @Override
+//    protected void onPreExecute() {
+//      AppController.getHelperProgressDialog().showProgress(SurveyActivity.this, "", "", false);
+//    }
   }
 
   public void signout() {

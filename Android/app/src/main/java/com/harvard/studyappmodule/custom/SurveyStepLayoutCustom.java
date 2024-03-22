@@ -215,7 +215,7 @@ public class SurveyStepLayoutCustom extends FixedSubmitBarLayoutCustom implement
     Bundle eventProperties = new Bundle();
     eventProperties.putString(
         CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-        context.getString(R.string.rsb_step_skip));
+        context.getString(org.researchstack.backbone.R.string.rsb_step_skip));
     analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
     if (callbacks != null) {
       callbacks.onSaveStep(StepCallbacks.ACTION_NEXT, getStep(), stepBody.getStepResult(true));

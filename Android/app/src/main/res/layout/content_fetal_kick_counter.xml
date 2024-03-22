@@ -13,14 +13,14 @@
         android:layout_marginTop="20dp"
         android:gravity="center">
 
-        <ImageView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/alaram"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_centerHorizontal="true"
             android:background="@drawable/time_icn1"/>
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/mTimer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -40,7 +40,7 @@
         android:layout_below="@+id/timerlayout"
         android:layout_marginTop="20dp">
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/mTotalCount"
             style="@style/TextType1"
             android:layout_centerHorizontal="true"
@@ -49,7 +49,7 @@
             android:textColor="@color/colorPrimaryBlack"
             android:textSize="22sp"/>
 
-        <EditText
+        <androidx.appcompat.widget.AppCompatEditText
             android:id="@+id/kickcounter"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -65,7 +65,7 @@
             android:textColorHint="@color/colorPrimary"
             android:textCursorDrawable="@drawable/custom_cursor_drawable"
             android:textSize="80sp"/>
-        <ImageView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/editButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -103,7 +103,7 @@
             android:layout_marginTop="20dp"
             android:layout_height="wrap_content">
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/mTapStart"
                 style="@style/TextType2"
                 android:layout_centerHorizontal="true"
@@ -113,7 +113,7 @@
                 android:textSize="16sp"
                 android:visibility="gone"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/starttxt"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -130,7 +130,7 @@
             android:layout_height="match_parent"
             android:layout_below="@+id/instructionlayout">
 
-            <ImageView
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/tapbutton"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
@@ -139,7 +139,7 @@
                 android:background="@drawable/kick_btn1"
                 android:visibility="gone"/>
 
-            <ImageView
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/startTimer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

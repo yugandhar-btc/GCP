@@ -79,7 +79,7 @@ public class RealmEncryptionHelper {
   }
 
   public void deleteEntry(String alias) {
-    try {
+     try {
       keyStore = KeyStore.getInstance(ANDROID_KEY_STORE);
       keyStore.load(null);
       keyStore.deleteEntry(alias);

@@ -16,8 +16,7 @@
         android:clickable="false"
         android:paddingLeft="18dp"
         android:paddingRight="18dp"
-        app:contentInsetLeft="0dp"
-        app:contentInsetStart="0dp"
+        app:contentInsetEnd="15dp"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light">
 
         <RelativeLayout
@@ -64,7 +63,7 @@
         </RelativeLayout>
     </androidx.appcompat.widget.Toolbar>
 
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@+id/topView"
@@ -75,5 +74,5 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"></LinearLayout>
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 </RelativeLayout>

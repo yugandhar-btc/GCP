@@ -22,6 +22,7 @@ import android.graphics.BitmapFactory;
 import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -31,6 +32,7 @@ import androidx.appcompat.widget.AppCompatEditText;
 import androidx.appcompat.widget.AppCompatTextView;
 import androidx.browser.customtabs.CustomTabsIntent;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.gatewaymodule.GatewayActivity;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.usermodule.event.ResendEmailEvent;
@@ -44,6 +46,9 @@ import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.SharedPreferenceHelper;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import io.realm.Realm;
 import java.util.HashMap;
@@ -74,6 +79,7 @@ public class VerificationStepActivity extends AppCompatActivity
   private CustomFirebaseAnalytics analyticsInstance;
   private TextView offlineIndicatior;
   private NetworkChangeReceiver networkChangeReceiver;
+  private ParticipantDataStoreAPIInterface anInterface;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -216,21 +222,54 @@ public class VerificationStepActivity extends AppCompatActivity
 
               params.put("emailId", emailId);
               params.put("code", verificationCode.getText().toString());
-              ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
-                  new ParticipantDatastoreConfigEvent(
-                      "post",
-                      Urls.CONFIRM_REGISTER_USER,
-                      CONFIRM_REGISTER_USER_RESPONSE,
-                      VerificationStepActivity.this,
-                      LoginData.class,
-                      params,
-                      header,
-                      null,
-                      false,
-                      VerificationStepActivity.this);
-              verifyUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
-              UserModulePresenter userModulePresenter = new UserModulePresenter();
-              userModulePresenter.performVerifyRegistration(verifyUserEvent);
+//              ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+//                  new ParticipantDatastoreConfigEvent(
+//                      "post",
+//                      Urls.CONFIRM_REGISTER_USER,
+//                      CONFIRM_REGISTER_USER_RESPONSE,
+//                      VerificationStepActivity.this,
+//                      LoginData.class,
+//                      params,
+//                      header,
+//                      null,
+//                      false,
+//                      VerificationStepActivity.this);
+//              verifyUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
+//              UserModulePresenter userModulePresenter = new UserModulePresenter();
+//              userModulePresenter.performVerifyRegistration(verifyUserEvent);
+              anInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class,
+                  UrlTypeConstants.ParticipantDataStore);
+              NetworkRequest.performAsyncRequest(anInterface.verifyEmailId(params), (data) -> {
+                verifiction(data);
+              }, (error) -> {
+                runOnUiThread(new Runnable() {
+                  @Override
+                  public void run() {
+                    AppController.getHelperProgressDialog().dismissDialog();
+                    int code = AppController.getErrorCode(error);
+                    String errormsg = AppController.getErrorMessage(error);
+                    if (code == 401) {
+                      if (from != null && from.equalsIgnoreCase("Activity")) {
+                        SharedPreferenceHelper.deletePreferences(VerificationStepActivity.this);
+                        // delete passcode from keystore
+                        String pass = AppController.refreshKeys("passcode");
+                        if (pass != null) {
+                          AppController.deleteKey("passcode_" + pass);
+                        }
+                        Intent intent = new Intent(VerificationStepActivity.this, GatewayActivity.class);
+                        ComponentName cn = intent.getComponent();
+                        Intent mainIntent = Intent.makeRestartActivityTask(cn);
+                        startActivity(mainIntent);
+                        finish();
+                      } else {
+                        AppController.getHelperSessionExpired(VerificationStepActivity.this, errormsg);
+                      }
+                    } else {
+                      Toast.makeText(VerificationStepActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+                    }
+                  }
+                });
+              });
             }
           }
         });
@@ -247,28 +286,86 @@ public class VerificationStepActivity extends AppCompatActivity
                 CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
             AppController.getHelperProgressDialog()
                 .showProgress(VerificationStepActivity.this, "", "", false);
-            ResendEmailEvent resendEmailEvent = new ResendEmailEvent();
-            HashMap<String, String> header = new HashMap<String, String>();
-
+//            ResendEmailEvent resendEmailEvent = new ResendEmailEvent();
+//            HashMap<String, String> header = new HashMap<String, String>();
+//
             HashMap<String, String> params = new HashMap<String, String>();
             params.put("emailId", emailId);
-            ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
-                new ParticipantDatastoreConfigEvent(
-                    "post",
-                    Urls.RESEND_CONFIRMATION,
-                    RESEND_CONFIRMATION,
-                    VerificationStepActivity.this,
-                    LoginData.class,
-                    params,
-                    header,
-                    null,
-                    false,
-                    VerificationStepActivity.this);
-            resendEmailEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
-            UserModulePresenter userModulePresenter = new UserModulePresenter();
-            userModulePresenter.performResendEmail(resendEmailEvent);
+//            ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+//                new ParticipantDatastoreConfigEvent(
+//                    "post",
+//                    Urls.RESEND_CONFIRMATION,
+//                    RESEND_CONFIRMATION,
+//                    VerificationStepActivity.this,
+//                    LoginData.class,
+//                    params,
+//                    header,
+//                    null,
+//                    false,
+//                    VerificationStepActivity.this);
+//            resendEmailEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
+//            UserModulePresenter userModulePresenter = new UserModulePresenter();
+//            userModulePresenter.performResendEmail(resendEmailEvent);
+            anInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class,
+                UrlTypeConstants.ParticipantDataStore);
+            NetworkRequest.performAsyncRequest(anInterface.resendConfirmation(params), (data) -> {
+              resendVerifcation(data);
+            }, (error) -> {
+              Log.e("check","error is "+error.getMessage());
+              runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  if(error.getMessage().equalsIgnoreCase("401")) {
+                    if (from != null && from.equalsIgnoreCase("Activity")) {
+                      SharedPreferenceHelper.deletePreferences(VerificationStepActivity.this);
+                      // delete passcode from keystore
+                      String pass = AppController.refreshKeys("passcode");
+                      if (pass != null) {
+                        AppController.deleteKey("passcode_" + pass);
+                      }
+                      Intent intent = new Intent(VerificationStepActivity.this, GatewayActivity.class);
+                      ComponentName cn = intent.getComponent();
+                      Intent mainIntent = Intent.makeRestartActivityTask(cn);
+                      startActivity(mainIntent);
+                      finish();
+                    } else {
+                      AppController.getHelperSessionExpired(VerificationStepActivity.this, error.getMessage());
+                    }
+                  } else {
+                    Toast.makeText(VerificationStepActivity.this,
+                        AppController.getErrorCode(error), Toast.LENGTH_SHORT).show();
+                  }
+                }
+              });
+            });
           }
         });
+  }
+
+  private void resendVerifcation(LoginData data) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        AppController.getHelperProgressDialog().dismissDialog();
+        Toast.makeText(VerificationStepActivity.this, getResources().getString(R.string.resend_success), Toast.LENGTH_SHORT)
+            .show();
+      }
+    });
+  }
+
+  private void verifiction(LoginData data) {
+    if (data != null) {
+      AppController.getHelperProgressDialog().dismissDialog();
+      if (type.equalsIgnoreCase("ForgotPasswordActivity")) {
+        Intent intent = new Intent(this, ForgotPasswordActivity.class);
+        intent.putExtra("from", "verification");
+        startActivityForResult(intent, FORGOT_PASSWORD_REPONSE);
+      } else {
+        loginData = data;
+        signin();
+      }
+    }
   }
 
   @Override

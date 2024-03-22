@@ -765,255 +765,400 @@ public class StudyActivity extends AppCompatActivity
   @Override
   public void onClick(View view) {
     Bundle eventProperties = new Bundle();
-    switch (view.getId()) {
-      case R.id.mHomeLayout:
-        eventProperties.putString(
-            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON, getString(R.string.study_side_home));
-        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-        previousValue = R.id.mHomeLayout;
-        titleFdaListens.setText(getResources().getString(R.string.app_name));
-        title.setText("");
-        editBtnLayout.setVisibility(View.GONE);
-        notificationBtn.setVisibility(View.VISIBLE);
-        filter.setVisibility(View.VISIBLE);
-        searchBtn.setVisibility(View.VISIBLE);
-        infoIcon.setVisibility(View.GONE);
+//    switch (view.getId()) {
+//      case R.id.mHomeLayout:
+//        eventProperties.putString(
+//            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON, getString(R.string.study_side_home));
+//        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//        previousValue = R.id.mHomeLayout;
+//        titleFdaListens.setText(getResources().getString(R.string.app_name));
+//        title.setText("");
+//        editBtnLayout.setVisibility(View.GONE);
+//        notificationBtn.setVisibility(View.VISIBLE);
+//        filter.setVisibility(View.VISIBLE);
+//        searchBtn.setVisibility(View.VISIBLE);
+//        infoIcon.setVisibility(View.GONE);
+//
+//        try {
+//          if (AppController.getHelperSharedPreference()
+//              .readPreference(this, getString(R.string.notification), "")
+//              .equalsIgnoreCase("true")) {
+//            notificationIcon.setImageResource(R.drawable.notification_white_active);
+//            notificatioStatus.setVisibility(View.VISIBLE);
+//          } else {
+//            notificationIcon.setImageResource(R.drawable.notification_white_active);
+//            notificatioStatus.setVisibility(View.GONE);
+//          }
+//
+//        } catch (Exception e) {
+//          Logger.log(e);
+//        }
+//
+//        closeDrawer();
+//        studyFragment = new StudyFragment();
+//        getSupportFragmentManager()
+//            .beginTransaction()
+//            .replace(R.id.frameLayoutContainer, studyFragment, "fragment")
+//            .commit();
+//        break;
+//
+//      case R.id.mResourcesLayout:
+//        eventProperties.putString(
+//            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//            getString(R.string.study_side_resources));
+//        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//        if (previousValue == R.id.mResourcesLayout) {
+//          closeDrawer();
+//        } else {
+//          previousValue = R.id.mResourcesLayout;
+//          titleFdaListens.setText("");
+//          title.setText(getResources().getString(R.string.resources));
+//          editBtnLayout.setVisibility(View.GONE);
+//          notificationBtn.setVisibility(View.GONE);
+//          filter.setVisibility(View.GONE);
+//          searchBtn.setVisibility(View.GONE);
+//          closeDrawer();
+//          getSupportFragmentManager()
+//              .beginTransaction()
+//              .replace(R.id.frameLayoutContainer, new ResourcesFragment(), "fragment")
+//              .commit();
+//        }
+//        break;
+//
+//      case R.id.mReachoutLayout:
+//        eventProperties.putString(
+//            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//            getString(R.string.study_side_reachout));
+//        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//        reachoutMenuClicked();
+//        break;
+//
+//      case R.id.mSignInProfileLayout:
+//        if (AppController.getHelperSharedPreference()
+//            .readPreference(StudyActivity.this, getString(R.string.userid), "")
+//            .equalsIgnoreCase("")) {
+//          if (!AppController.isNetworkAvailable(StudyActivity.this)) {
+//            androidx.appcompat.app.AlertDialog.Builder alertDialog =
+//                new androidx.appcompat.app.AlertDialog.Builder(
+//                    StudyActivity.this, R.style.Style_Dialog_Rounded_Corner);
+//            alertDialog.setTitle("              You are offline");
+//            alertDialog.setMessage("You are offline. Kindly check the internet connection.");
+//            alertDialog.setCancelable(false);
+//            alertDialog.setPositiveButton(
+//                "OK",
+//                new DialogInterface.OnClickListener() {
+//                  @Override
+//                  public void onClick(DialogInterface dialogInterface, int i) {
+//                    Bundle eventProperties = new Bundle();
+//                    //          eventProperties.putString(
+//                    //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//                    //              getString(R.string.app_update_next_time_ok));
+//                    //          analyticsInstance.logEvent(
+//                    //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK,
+//                    // eventProperties);
+//                    dialogInterface.dismiss();
+//                  }
+//                });
+//            final androidx.appcompat.app.AlertDialog dialog = alertDialog.create();
+//            dialog.show();
+//          } else {
+//            eventProperties.putString(
+//                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//                getString(R.string.study_side_sign_in));
+//            analyticsInstance.logEvent(
+//                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//            AppController.getHelperSharedPreference()
+//                .writePreference(StudyActivity.this, "toolbarClicked", "true");
+//            closeDrawer();
+//            SharedPreferenceHelper.writePreference(
+//                StudyActivity.this, getString(R.string.loginflow), "SideMenu");
+//            SharedPreferenceHelper.writePreference(
+//                StudyActivity.this, getString(R.string.logintype), "signIn");
+//            CustomTabsIntent customTabsIntent =
+//                new CustomTabsIntent.Builder()
+//                    .setToolbarColor(getResources().getColor(R.color.colorAccent))
+//                    .setShowTitle(true)
+//                    .setCloseButtonIcon(
+//                        BitmapFactory.decodeResource(getResources(), R.drawable.backeligibility))
+//                    .setStartAnimations(
+//                        StudyActivity.this, R.anim.slide_in_right, R.anim.slide_out_left)
+//                    .setExitAnimations(
+//                        StudyActivity.this, R.anim.slide_in_left, R.anim.slide_out_right)
+//                    .build();
+//            Apps apps = dbServiceSubscriber.getApps(realm);
+//            customTabsIntent.intent.setData(
+//                Uri.parse(
+//                    Urls.LOGIN_URL
+//                        .replace("$FromEmail", apps.getFromEmail())
+//                        .replace("$SupportEmail", apps.getSupportEmail())
+//                        .replace("$AppName", apps.getAppName())
+//                        .replace("$ContactEmail", apps.getContactUsEmail())));
+//            dbServiceSubscriber.closeRealmObj(realm);
+//            startActivity(customTabsIntent.intent);
+//          }
+//        } else {
+//          if (previousValue == R.id.mSignInProfileLayout) {
+//            closeDrawer();
+//          } else {
+//            previousValue = R.id.mSignInProfileLayout;
+//            eventProperties.putString(
+//                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//                getString(R.string.study_side_my_account));
+//            analyticsInstance.logEvent(
+//                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//            titleFdaListens.setText("");
+//            title.setText(getResources().getString(R.string.profile));
+//            editBtnLayout.setVisibility(View.VISIBLE);
+//            notificationBtn.setVisibility(View.GONE);
+//            filter.setVisibility(View.GONE);
+//            searchBtn.setVisibility(View.GONE);
+//            infoIcon.setVisibility(View.GONE);
+//            profileFragment = new ProfileFragment();
+//
+//            editBtnLayout.setOnClickListener(
+//                new View.OnClickListener() {
+//                  @Override
+//                  public void onClick(View view) {
+//                    Bundle eventProperties = new Bundle();
+//                    eventProperties.putString(
+//                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//                        getString(R.string.study_edit));
+//                    analyticsInstance.logEvent(
+//                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//                    if (editTxt
+//                        .getText()
+//                        .toString()
+//                        .equalsIgnoreCase(getResources().getString(R.string.edit))) {
+//                      enableEditText();
+//                    } else if (editTxt
+//                        .getText()
+//                        .toString()
+//                        .equalsIgnoreCase(getResources().getString(R.string.cancel))) {
+//                      disableEditText();
+//                    }
+//                  }
+//                });
+//            closeDrawer();
+//            profileFragment = new ProfileFragment();
+//            getSupportFragmentManager()
+//                .beginTransaction()
+//                .replace(R.id.frameLayoutContainer, profileFragment, "fragment")
+//                .commit();
+//          }
+//        }
+//        break;
+//
+//      case R.id.mNewUsrReachoutLayout:
+//        previousValue = R.id.mNewUsrReachoutLayout;
+//        if (AppController.getHelperSharedPreference()
+//            .readPreference(StudyActivity.this, getString(R.string.userid), "")
+//            .equalsIgnoreCase("")) {
+//          if (!AppController.isNetworkAvailable(StudyActivity.this)) {
+//            androidx.appcompat.app.AlertDialog.Builder alertDialog =
+//                new androidx.appcompat.app.AlertDialog.Builder(
+//                    StudyActivity.this, R.style.Style_Dialog_Rounded_Corner);
+//            alertDialog.setTitle("              You are offline");
+//            alertDialog.setMessage("You are offline. Kindly check the internet connection.");
+//            alertDialog.setCancelable(false);
+//            alertDialog.setPositiveButton(
+//                "OK",
+//                new DialogInterface.OnClickListener() {
+//                  @Override
+//                  public void onClick(DialogInterface dialogInterface, int i) {
+//                    Bundle eventProperties = new Bundle();
+//                    //          eventProperties.putString(
+//                    //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//                    //              getString(R.string.app_update_next_time_ok));
+//                    //          analyticsInstance.logEvent(
+//                    //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK,
+//                    // eventProperties);
+//                    dialogInterface.dismiss();
+//                  }
+//                });
+//            final androidx.appcompat.app.AlertDialog dialog = alertDialog.create();
+//            dialog.show();
+//          } else {
+//            eventProperties.putString(
+//                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//                getString(R.string.study_side_sign_up));
+//            analyticsInstance.logEvent(
+//                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//            titleFdaListens.setText("");
+//            title.setText(getResources().getString(R.string.signup));
+//            editBtnLayout.setVisibility(View.GONE);
+//            notificationBtn.setVisibility(View.GONE);
+//            filter.setVisibility(View.GONE);
+//            searchBtn.setVisibility(View.GONE);
+//            infoIcon.setVisibility(View.GONE);
+//            closeDrawer();
+//            getSupportFragmentManager()
+//                .beginTransaction()
+//                .replace(R.id.frameLayoutContainer, new SignupFragment(), "fragment")
+//                .commit();
+//          }
+//        } else {
+//          // SignOut Reach out menu click
+//          eventProperties.putString(
+//              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//              getString(R.string.study_side_reachout));
+//          analyticsInstance.logEvent(
+//              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//          reachoutMenuClicked();
+//        }
+//        break;
+//      case R.id.mSignOutLayout:
+//        eventProperties.putString(
+//            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+//            getString(R.string.study_side_sign_out));
+//        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+//        closeDrawer();
+//        logout();
+//        break;
+//    }
+    int viewId = view.getId();
+    if(viewId == R.id.mHomeLayout){
+      previousValue = R.id.mHomeLayout;
+      titleFdaListens.setText(getResources().getString(R.string.app_name));
+      title.setText("");
+      editBtnLayout.setVisibility(View.GONE);
+      notificationBtn.setVisibility(View.VISIBLE);
+      filter.setVisibility(View.VISIBLE);
+      searchBtn.setVisibility(View.VISIBLE);
+      infoIcon.setVisibility(View.GONE);
 
-        try {
-          if (AppController.getHelperSharedPreference()
-              .readPreference(this, getString(R.string.notification), "")
-              .equalsIgnoreCase("true")) {
-            notificationIcon.setImageResource(R.drawable.notification_white_active);
-            notificatioStatus.setVisibility(View.VISIBLE);
-          } else {
-            notificationIcon.setImageResource(R.drawable.notification_white_active);
-            notificatioStatus.setVisibility(View.GONE);
-          }
-
-        } catch (Exception e) {
-          Logger.log(e);
+      try {
+        if (AppController.getHelperSharedPreference()
+            .readPreference(this, getString(R.string.notification), "")
+            .equalsIgnoreCase("true")) {
+          notificationIcon.setImageResource(R.drawable.notification_white_active);
+          notificatioStatus.setVisibility(View.VISIBLE);
+        } else {
+          notificationIcon.setImageResource(R.drawable.notification_white_active);
+          notificatioStatus.setVisibility(View.GONE);
         }
 
+      } catch (Exception e) {
+        Logger.log(e);
+      }
+
+      closeDrawer();
+      studyFragment = new StudyFragment();
+      getSupportFragmentManager()
+          .beginTransaction()
+          .replace(R.id.frameLayoutContainer, studyFragment, "fragment")
+          .commit();
+    }
+    else if(viewId == R.id.mResourcesLayout){
+      if (previousValue == R.id.mResourcesLayout) {
         closeDrawer();
-        studyFragment = new StudyFragment();
+      }
+      else {
+        previousValue = R.id.mResourcesLayout;
+        titleFdaListens.setText("");
+        title.setText(getResources().getString(R.string.resources));
+        editBtnLayout.setVisibility(View.GONE);
+        notificationBtn.setVisibility(View.GONE);
+        filter.setVisibility(View.GONE);
+        searchBtn.setVisibility(View.GONE);
+        closeDrawer();
         getSupportFragmentManager()
             .beginTransaction()
-            .replace(R.id.frameLayoutContainer, studyFragment, "fragment")
+            .replace(R.id.frameLayoutContainer, new ResourcesFragment(), "fragment")
             .commit();
-        break;
-
-      case R.id.mResourcesLayout:
-        eventProperties.putString(
-            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-            getString(R.string.study_side_resources));
-        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-        if (previousValue == R.id.mResourcesLayout) {
+      }
+    }
+    else if(viewId == R.id.mReachoutLayout){
+      reachoutMenuClicked();
+    }
+    else if(viewId == R.id.mSignInProfileLayout){
+      if (AppController.getHelperSharedPreference()
+          .readPreference(StudyActivity.this, getString(R.string.userid), "")
+          .equalsIgnoreCase("")) {
+        closeDrawer();
+        SharedPreferenceHelper.writePreference(
+            StudyActivity.this, getString(R.string.loginflow), "SideMenu");
+        SharedPreferenceHelper.writePreference(
+            StudyActivity.this, getString(R.string.logintype), "signIn");
+        CustomTabsIntent customTabsIntent =
+            new CustomTabsIntent.Builder()
+                .setToolbarColor(getResources().getColor(R.color.colorAccent))
+                .setShowTitle(true)
+                .setCloseButtonIcon(
+                    BitmapFactory.decodeResource(getResources(), R.drawable.backeligibility))
+                .setStartAnimations(
+                    StudyActivity.this, R.anim.slide_in_right, R.anim.slide_out_left)
+                .setExitAnimations(
+                    StudyActivity.this, R.anim.slide_in_left, R.anim.slide_out_right)
+                .build();
+        customTabsIntent.intent.setData(Uri.parse(Urls.LOGIN_URL));
+        startActivity(customTabsIntent.intent);
+      }
+      else {
+        if (previousValue == R.id.mSignInProfileLayout) {
           closeDrawer();
         } else {
-          previousValue = R.id.mResourcesLayout;
+          previousValue = R.id.mSignInProfileLayout;
           titleFdaListens.setText("");
-          title.setText(getResources().getString(R.string.resources));
-          editBtnLayout.setVisibility(View.GONE);
+          title.setText(getResources().getString(R.string.profile));
+          editBtnLayout.setVisibility(View.VISIBLE);
           notificationBtn.setVisibility(View.GONE);
           filter.setVisibility(View.GONE);
           searchBtn.setVisibility(View.GONE);
+          infoIcon.setVisibility(View.GONE);
+          profileFragment = new ProfileFragment();
+
+          editBtnLayout.setOnClickListener(
+              new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                  if (editTxt
+                      .getText()
+                      .toString()
+                      .equalsIgnoreCase(getResources().getString(R.string.edit))) {
+                    enableEditText();
+                  } else if (editTxt
+                      .getText()
+                      .toString()
+                      .equalsIgnoreCase(getResources().getString(R.string.cancel))) {
+                    disableEditText();
+                  }
+                }
+              });
           closeDrawer();
+          profileFragment = new ProfileFragment();
           getSupportFragmentManager()
               .beginTransaction()
-              .replace(R.id.frameLayoutContainer, new ResourcesFragment(), "fragment")
+              .replace(R.id.frameLayoutContainer, profileFragment, "fragment")
               .commit();
         }
-        break;
-
-      case R.id.mReachoutLayout:
-        eventProperties.putString(
-            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-            getString(R.string.study_side_reachout));
-        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-        reachoutMenuClicked();
-        break;
-
-      case R.id.mSignInProfileLayout:
-        if (AppController.getHelperSharedPreference()
-            .readPreference(StudyActivity.this, getString(R.string.userid), "")
-            .equalsIgnoreCase("")) {
-          if (!AppController.isNetworkAvailable(StudyActivity.this)) {
-            androidx.appcompat.app.AlertDialog.Builder alertDialog =
-                new androidx.appcompat.app.AlertDialog.Builder(
-                    StudyActivity.this, R.style.Style_Dialog_Rounded_Corner);
-            alertDialog.setTitle("              You are offline");
-            alertDialog.setMessage("You are offline. Kindly check the internet connection.");
-            alertDialog.setCancelable(false);
-            alertDialog.setPositiveButton(
-                "OK",
-                new DialogInterface.OnClickListener() {
-                  @Override
-                  public void onClick(DialogInterface dialogInterface, int i) {
-                    Bundle eventProperties = new Bundle();
-                    //          eventProperties.putString(
-                    //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                    //              getString(R.string.app_update_next_time_ok));
-                    //          analyticsInstance.logEvent(
-                    //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK,
-                    // eventProperties);
-                    dialogInterface.dismiss();
-                  }
-                });
-            final androidx.appcompat.app.AlertDialog dialog = alertDialog.create();
-            dialog.show();
-          } else {
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getString(R.string.study_side_sign_in));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            AppController.getHelperSharedPreference()
-                .writePreference(StudyActivity.this, "toolbarClicked", "true");
-            closeDrawer();
-            SharedPreferenceHelper.writePreference(
-                StudyActivity.this, getString(R.string.loginflow), "SideMenu");
-            SharedPreferenceHelper.writePreference(
-                StudyActivity.this, getString(R.string.logintype), "signIn");
-            CustomTabsIntent customTabsIntent =
-                new CustomTabsIntent.Builder()
-                    .setToolbarColor(getResources().getColor(R.color.colorAccent))
-                    .setShowTitle(true)
-                    .setCloseButtonIcon(
-                        BitmapFactory.decodeResource(getResources(), R.drawable.backeligibility))
-                    .setStartAnimations(
-                        StudyActivity.this, R.anim.slide_in_right, R.anim.slide_out_left)
-                    .setExitAnimations(
-                        StudyActivity.this, R.anim.slide_in_left, R.anim.slide_out_right)
-                    .build();
-            Apps apps = dbServiceSubscriber.getApps(realm);
-            customTabsIntent.intent.setData(
-                Uri.parse(
-                    Urls.LOGIN_URL
-                        .replace("$FromEmail", apps.getFromEmail())
-                        .replace("$SupportEmail", apps.getSupportEmail())
-                        .replace("$AppName", apps.getAppName())
-                        .replace("$ContactEmail", apps.getContactUsEmail())));
-            dbServiceSubscriber.closeRealmObj(realm);
-            startActivity(customTabsIntent.intent);
-          }
-        } else {
-          if (previousValue == R.id.mSignInProfileLayout) {
-            closeDrawer();
-          } else {
-            previousValue = R.id.mSignInProfileLayout;
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getString(R.string.study_side_my_account));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            titleFdaListens.setText("");
-            title.setText(getResources().getString(R.string.profile));
-            editBtnLayout.setVisibility(View.VISIBLE);
-            notificationBtn.setVisibility(View.GONE);
-            filter.setVisibility(View.GONE);
-            searchBtn.setVisibility(View.GONE);
-            infoIcon.setVisibility(View.GONE);
-            profileFragment = new ProfileFragment();
-
-            editBtnLayout.setOnClickListener(
-                new View.OnClickListener() {
-                  @Override
-                  public void onClick(View view) {
-                    Bundle eventProperties = new Bundle();
-                    eventProperties.putString(
-                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                        getString(R.string.study_edit));
-                    analyticsInstance.logEvent(
-                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-                    if (editTxt
-                        .getText()
-                        .toString()
-                        .equalsIgnoreCase(getResources().getString(R.string.edit))) {
-                      enableEditText();
-                    } else if (editTxt
-                        .getText()
-                        .toString()
-                        .equalsIgnoreCase(getResources().getString(R.string.cancel))) {
-                      disableEditText();
-                    }
-                  }
-                });
-            closeDrawer();
-            profileFragment = new ProfileFragment();
-            getSupportFragmentManager()
-                .beginTransaction()
-                .replace(R.id.frameLayoutContainer, profileFragment, "fragment")
-                .commit();
-          }
-        }
-        break;
-
-      case R.id.mNewUsrReachoutLayout:
-        previousValue = R.id.mNewUsrReachoutLayout;
-        if (AppController.getHelperSharedPreference()
-            .readPreference(StudyActivity.this, getString(R.string.userid), "")
-            .equalsIgnoreCase("")) {
-          if (!AppController.isNetworkAvailable(StudyActivity.this)) {
-            androidx.appcompat.app.AlertDialog.Builder alertDialog =
-                new androidx.appcompat.app.AlertDialog.Builder(
-                    StudyActivity.this, R.style.Style_Dialog_Rounded_Corner);
-            alertDialog.setTitle("              You are offline");
-            alertDialog.setMessage("You are offline. Kindly check the internet connection.");
-            alertDialog.setCancelable(false);
-            alertDialog.setPositiveButton(
-                "OK",
-                new DialogInterface.OnClickListener() {
-                  @Override
-                  public void onClick(DialogInterface dialogInterface, int i) {
-                    Bundle eventProperties = new Bundle();
-                    //          eventProperties.putString(
-                    //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                    //              getString(R.string.app_update_next_time_ok));
-                    //          analyticsInstance.logEvent(
-                    //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK,
-                    // eventProperties);
-                    dialogInterface.dismiss();
-                  }
-                });
-            final androidx.appcompat.app.AlertDialog dialog = alertDialog.create();
-            dialog.show();
-          } else {
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getString(R.string.study_side_sign_up));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            titleFdaListens.setText("");
-            title.setText(getResources().getString(R.string.signup));
-            editBtnLayout.setVisibility(View.GONE);
-            notificationBtn.setVisibility(View.GONE);
-            filter.setVisibility(View.GONE);
-            searchBtn.setVisibility(View.GONE);
-            infoIcon.setVisibility(View.GONE);
-            closeDrawer();
-            getSupportFragmentManager()
-                .beginTransaction()
-                .replace(R.id.frameLayoutContainer, new SignupFragment(), "fragment")
-                .commit();
-          }
-        } else {
-          // SignOut Reach out menu click
-          eventProperties.putString(
-              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-              getString(R.string.study_side_reachout));
-          analyticsInstance.logEvent(
-              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-          reachoutMenuClicked();
-        }
-        break;
-      case R.id.mSignOutLayout:
-        eventProperties.putString(
-            CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-            getString(R.string.study_side_sign_out));
-        analyticsInstance.logEvent(CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+      }
+    }
+    else if(viewId == R.id.mNewUsrReachoutLayout){
+      previousValue = R.id.mNewUsrReachoutLayout;
+      if (AppController.getHelperSharedPreference()
+          .readPreference(StudyActivity.this, getString(R.string.userid), "")
+          .equalsIgnoreCase("")) {
+        titleFdaListens.setText("");
+        title.setText(getResources().getString(R.string.signup));
+        editBtnLayout.setVisibility(View.GONE);
+        notificationBtn.setVisibility(View.GONE);
+        filter.setVisibility(View.GONE);
+        searchBtn.setVisibility(View.GONE);
+        infoIcon.setVisibility(View.GONE);
         closeDrawer();
-        logout();
-        break;
+        getSupportFragmentManager()
+            .beginTransaction()
+            .replace(R.id.frameLayoutContainer, new SignupFragment(), "fragment")
+            .commit();
+      }
+      else {
+        // SignOut Reach out menu click
+        reachoutMenuClicked();
+      }
+    }
+    else if(viewId == R.id.mSignOutLayout){
+      closeDrawer();
+      logout();
     }
   }
 

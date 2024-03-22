@@ -75,10 +75,10 @@ public class DecimalUnitAnswerFormat extends ChoiceAnswerFormatCustom {
       Float floatAnswer = Float.valueOf(inputString);
       if (floatAnswer < minValue) {
         return new BodyAnswer(
-            false, R.string.rsb_invalid_answer_integer_under, String.valueOf(getMinValue()));
+            false, org.researchstack.backbone.R.string.rsb_invalid_answer_integer_under, String.valueOf(getMinValue()));
       } else if (floatAnswer > maxValue) {
         return new BodyAnswer(
-            false, R.string.rsb_invalid_answer_integer_over, String.valueOf(getMaxValue()));
+            false, org.researchstack.backbone.R.string.rsb_invalid_answer_integer_over, String.valueOf(getMaxValue()));
       }
     }
 

@@ -274,7 +274,7 @@ public class CircleIndicator extends LinearLayout {
   private void createIndicators() {
     removeAllViews();
     int count = viewpager.getAdapter().getCount();
-    if (count <= 0) {
+    if (count <= 1) {
       return;
     }
     int currentItem = viewpager.getCurrentItem();

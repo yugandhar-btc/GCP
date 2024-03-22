@@ -55,6 +55,7 @@ public class TermsPrivacyPolicyActivity extends AppCompatActivity {
 
   private void setTextForView() {
     try {
+
       if (getIntent().getStringExtra("title") == null) {
         if (getIntent().getData().getPath().equalsIgnoreCase("/mystudies/privacyPolicy")) {
           title.setText(getString(R.string.privacy_policy));
@@ -66,8 +67,11 @@ public class TermsPrivacyPolicyActivity extends AppCompatActivity {
       } else {
         title.setText(getIntent().getStringExtra("title"));
       }
-      AppController.getHelperProgressDialog()
-          .showProgress(TermsPrivacyPolicyActivity.this, "", "", false);
+
+
+      AppController.getHelperProgressDialog().showProgress(TermsPrivacyPolicyActivity.this, "", "", false);
+
+
       webView.getSettings().setLoadsImagesAutomatically(true);
       webView.getSettings().setJavaScriptEnabled(true);
       webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
@@ -107,17 +111,17 @@ public class TermsPrivacyPolicyActivity extends AppCompatActivity {
 
   private void bindEvents() {
     backBtn.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getString(R.string.terms_privacy_back));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            finish();
-          }
-        });
+            new View.OnClickListener() {
+              @Override
+              public void onClick(View view) {
+                Bundle eventProperties = new Bundle();
+                eventProperties.putString(
+                        CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        getString(R.string.terms_privacy_back));
+                analyticsInstance.logEvent(
+                        CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                finish();
+              }
+            });
   }
 }

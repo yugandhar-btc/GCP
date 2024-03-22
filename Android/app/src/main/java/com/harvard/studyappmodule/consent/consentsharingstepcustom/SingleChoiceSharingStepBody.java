@@ -125,12 +125,12 @@ public class SingleChoiceSharingStepBody<T> implements StepBody {
     final RadioGroup radioGroup = new RadioGroup(parent.getContext());
     radioGroup.setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
     radioGroup.setDividerDrawable(
-        ContextCompat.getDrawable(parent.getContext(), R.drawable.rsb_divider_empty_8dp));
+        ContextCompat.getDrawable(parent.getContext(), org.researchstack.backbone.R.drawable.rsb_divider_empty_8dp));
 
     for (int i = 0; i < choices.length; i++) {
       Choice choice = choices[i];
       RadioButton radioButton =
-          (RadioButton) inflater.inflate(R.layout.rsb_item_radio, radioGroup, false);
+          (RadioButton) inflater.inflate(org.researchstack.backbone.R.layout.rsb_item_radio, radioGroup, false);
       radioButton.setText(choice.getText());
       radioButton.setId(i);
 
@@ -159,7 +159,7 @@ public class SingleChoiceSharingStepBody<T> implements StepBody {
     ViewGroup compactView = (ViewGroup) initViewDefault(inflater, parent);
 
     TextView label =
-        (TextView) inflater.inflate(R.layout.rsb_item_text_view_title_compact, compactView, false);
+        (TextView) inflater.inflate(org.researchstack.backbone.R.layout.rsb_item_text_view_title_compact, compactView, false);
     label.setText(step.getTitle());
     compactView.addView(label, 0);
 
@@ -180,7 +180,7 @@ public class SingleChoiceSharingStepBody<T> implements StepBody {
   @Override
   public BodyAnswer getBodyAnswerState() {
     if (currentSelected == null) {
-      return new BodyAnswer(false, R.string.rsb_invalid_answer_choice);
+      return new BodyAnswer(false, org.researchstack.backbone.R.string.rsb_invalid_answer_choice);
     } else {
       return BodyAnswer.VALID;
     }

@@ -42,7 +42,7 @@
                     android:layout_below="@+id/mSidebarTitle"
                     android:layout_marginRight="20dp">
 
-                    <TextView
+                    <androidx.appcompat.widget.AppCompatTextView
                         android:id="@+id/poweredBy"
                         style="@style/TextType4"
                         android:layout_width="wrap_content"
@@ -52,7 +52,7 @@
                 </RelativeLayout>
             </RelativeLayout>
 
-            <ScrollView
+            <androidx.core.widget.NestedScrollView
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="2.5"
@@ -235,7 +235,7 @@
 
                     </LinearLayout>
                 </LinearLayout>
-            </ScrollView>
+            </androidx.core.widget.NestedScrollView>
 
             <RelativeLayout
                 android:layout_width="wrap_content"
@@ -248,7 +248,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="10dp">
 
-                    <TextView
+                    <androidx.appcompat.widget.AppCompatTextView
                         android:id="@+id/version"
                         style="@style/TextType3"
                         android:layout_width="wrap_content"

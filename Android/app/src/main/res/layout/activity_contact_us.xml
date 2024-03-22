@@ -54,7 +54,6 @@
         android:paddingLeft="18dp"
         android:paddingRight="18dp"
         app:contentInsetLeft="0dp"
-        app:contentInsetStart="0dp"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light">
 
         <RelativeLayout
@@ -235,7 +234,7 @@
                     android:textColor="@color/colorPrimaryBlack"
                     android:textColorHint="@color/colorSecondary"
                     android:textCursorDrawable="@drawable/custom_cursor_drawable" />
-                <TextView
+                <androidx.appcompat.widget.AppCompatTextView
                     android:id="@+id/offlineIndicatior"
                     android:layout_width="200dp"
                     android:layout_height="30dp"
@@ -248,7 +247,7 @@
                     android:textSize="16dp"
                     android:layout_alignParentBottom="true"
                     android:includeFontPadding ="true"
-                    android:visibility="gone"></TextView>
+                    android:visibility="gone"></androidx.appcompat.widget.AppCompatTextView>
             </RelativeLayout>
 
         </RelativeLayout>

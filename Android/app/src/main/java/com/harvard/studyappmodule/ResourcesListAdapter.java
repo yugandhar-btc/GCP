@@ -130,12 +130,13 @@ public class ResourcesListAdapter extends RecyclerView.Adapter<ResourcesListAdap
               && !o2.getTitle()
               .contains(context.getResources().getString(R.string.data_sharing))) {
             return 1;
-          } else if (!o1.getTitle()
-              .contains(context.getResources().getString(R.string.data_sharing))
-              && o2.getTitle()
-              .contains(context.getResources().getString(R.string.data_sharing))) {
-            return -1;
           }
+//          else if (!o1.getTitle()
+//              .contains(context.getResources().getString(R.string.data_sharing))
+//              && o2.getTitle()
+//              .contains(context.getResources().getString(R.string.data_sharing))) {
+//            return -1;
+//          }
           return 0;
         }
       };

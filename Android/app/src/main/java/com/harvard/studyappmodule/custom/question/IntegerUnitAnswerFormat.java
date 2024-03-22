@@ -73,10 +73,10 @@ public class IntegerUnitAnswerFormat extends ChoiceAnswerFormatCustom {
       Integer intAnswer = Integer.valueOf(inputString);
       if (intAnswer < getMinValue()) {
         return new BodyAnswer(
-            false, R.string.rsb_invalid_answer_integer_under, String.valueOf(getMinValue()));
+            false, org.researchstack.backbone.R.string.rsb_invalid_answer_integer_under, String.valueOf(getMinValue()));
       } else if (intAnswer > getMaxValue()) {
         return new BodyAnswer(
-            false, R.string.rsb_invalid_answer_integer_over, String.valueOf(getMaxValue()));
+            false, org.researchstack.backbone.R.string.rsb_invalid_answer_integer_over, String.valueOf(getMaxValue()));
       }
     }
 

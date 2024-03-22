@@ -13,14 +13,24 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.iid.FirebaseInstanceId;
+import com.google.firebase.messaging.FirebaseMessaging;
 import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
 import com.harvard.FdaApplication;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.notificationmodule.NotificationModuleSubscriber;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.ChangePasswordActivity;
@@ -30,7 +40,10 @@ import com.harvard.studyappmodule.StudyInfoActivity;
 import com.harvard.usermodule.event.GetUserProfileEvent;
 import com.harvard.usermodule.event.LoginEvent;
 import com.harvard.usermodule.event.UpdateUserProfileEvent;
+import com.harvard.usermodule.webservicemodel.Info;
+import com.harvard.usermodule.webservicemodel.Settings;
 import com.harvard.usermodule.webservicemodel.TokenData;
+import com.harvard.usermodule.webservicemodel.UpdateProfileRequestData;
 import com.harvard.usermodule.webservicemodel.UpdateUserProfileData;
 import com.harvard.usermodule.webservicemodel.UserProfileData;
 import com.harvard.utils.AppController;
@@ -38,11 +51,18 @@ import com.harvard.utils.Logger;
 import com.harvard.utils.SharedPreferenceHelper;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.AuthServerInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.AuthServerConfigEvent;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -64,6 +84,11 @@ public class LoginCallbackActivity extends AppCompatActivity
   private static final String ACCOUNT_LOCKED_STATUS = "2";
   private static final String INTENT_SIGNIN = "signin";
   private static final String INTENT_FLOW = "login_callback";
+  private static String gcmToken ;
+  private UpdateProfileRequestData updateProfileRequestData;
+  private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
+  private UpdateUserProfileData updateUserProfileData;
+  private AuthServerInterface authServerInterface;
 
   @Override
   protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -99,23 +124,71 @@ public class LoginCallbackActivity extends AppCompatActivity
           params.put("code_verifier", FdaApplication.getRandomString());
           params.put("code", code);
           params.put("userId", userId);
+//
+//          AuthServerConfigEvent authServerConfigEvent =
+//              new AuthServerConfigEvent(
+//                  "post",
+//                  Urls.TOKENS,
+//                  TOKENS_REQUEST,
+//                  this,
+//                  TokenData.class,
+//                  params,
+//                  headers,
+//                  null,
+//                  false,
+//                  this);
+//          LoginEvent loginEvent = new LoginEvent();
+//          loginEvent.setAuthServerConfigEvent(authServerConfigEvent);
+//          UserModulePresenter userModulePresenter = new UserModulePresenter();
+//          userModulePresenter.performLogin(loginEvent);
+          authServerInterface = new ServiceManager().createService(AuthServerInterface.class, UrlTypeConstants.AuthServer);
+          NetworkRequest.performAsyncRequest(authServerInterface.oauthTokenRequest(headers,params),
+              (data) -> {
+                runOnUiThread(new Runnable() {
+                  @Override
+                  public void run() {
+                    if (data != null) {
+                      TokenData tokenData = data;
+                      // FilterActivity Screen json object clearing
+                      AppController.getHelperSharedPreference()
+                          .writePreference(LoginCallbackActivity.this, getString(R.string.json_object_filter), "");
 
-          AuthServerConfigEvent authServerConfigEvent =
-              new AuthServerConfigEvent(
-                  "post",
-                  Urls.TOKENS,
-                  TOKENS_REQUEST,
-                  this,
-                  TokenData.class,
-                  params,
-                  headers,
-                  null,
-                  false,
-                  this);
-          LoginEvent loginEvent = new LoginEvent();
-          loginEvent.setAuthServerConfigEvent(authServerConfigEvent);
-          UserModulePresenter userModulePresenter = new UserModulePresenter();
-          userModulePresenter.performLogin(loginEvent);
+                      userAuth = tokenData.getAccess_token();
+                      AppController.getHelperSharedPreference()
+                          .writePreference(
+                              LoginCallbackActivity.this,
+                              getString(R.string.refreshToken),
+                              tokenData.getRefresh_token());
+                      if (accountStatus != null
+                          && (accountStatus.equalsIgnoreCase(PASSWORD_RESET_STATUS)
+                          || accountStatus.equalsIgnoreCase(ACCOUNT_LOCKED_STATUS))) {
+                        AppController.getHelperProgressDialog().dismissDialog();
+                        Intent changePasswordIntent =
+                            new Intent(LoginCallbackActivity.this, ChangePasswordActivity.class);
+                        changePasswordIntent.putExtra("from", "signin");
+                        changePasswordIntent.putExtra("userid", userId);
+                        changePasswordIntent.putExtra("auth", userAuth);
+                        changePasswordIntent.putExtra("email", emailId);
+                        startActivityForResult(changePasswordIntent, CHANGE_PASSWORD_RESPONSE);
+                      } else {
+                        new GetFcmRefreshToken().execute();
+                      }
+                    }
+
+                  }
+                });
+              }, (error) -> {
+                runOnUiThread(new Runnable() {
+                  @Override
+                  public void run() {
+                    AppController.getHelperProgressDialog().dismissDialog();
+                    Toast.makeText(LoginCallbackActivity.this,
+                        AppController.getErrorMessage(error), Toast.LENGTH_SHORT).show();
+                    finish();
+
+                  }
+                });
+              });
         } else if (uri.getPath().equalsIgnoreCase(Urls.DEEPLINK_ACTIVATION)) {
           emailId = urlParams.get("email");
           Intent verificationIntent =
@@ -286,45 +359,121 @@ public class LoginCallbackActivity extends AppCompatActivity
     finish();
   }
 
-  private class GetFcmRefreshToken extends AsyncTask<String, String, String> {
+  private class GetFcmRefreshToken
+//      extends AsyncTask<String, String, String>
+  {
 
-    @Override
-    protected String doInBackground(String... params) {
-      String token = "";
-      if (FirebaseInstanceId.getInstance().getToken() == null
-          || FirebaseInstanceId.getInstance().getToken().isEmpty()) {
-        boolean regIdStatus = false;
-        while (!regIdStatus) {
-          token =
-              AppController.getHelperSharedPreference()
-                  .readPreference(LoginCallbackActivity.this, "deviceToken", "");
-          if (!token.isEmpty()) {
-            regIdStatus = true;
-          }
-        }
-      } else {
-        AppController.getHelperSharedPreference()
-            .writePreference(
-                LoginCallbackActivity.this,
-                "deviceToken",
-                FirebaseInstanceId.getInstance().getToken());
-        token =
-            AppController.getHelperSharedPreference()
-                .readPreference(LoginCallbackActivity.this, "deviceToken", "");
-      }
-      return token;
-    }
-
-    @Override
-    protected void onPostExecute(String token) {
-      callUpdateProfileWebService(token);
-    }
-
-    @Override
-    protected void onPreExecute() {
+    private void execute() {
       AppController.getHelperProgressDialog()
           .showProgress(LoginCallbackActivity.this, "", "", false);
-    }
+
+      Executor executor = Executors.newSingleThreadExecutor();
+      Handler handler = new Handler(Looper.myLooper());
+
+      executor.execute(new Runnable() {
+        @Override
+        public void run() {
+          String token = "";
+          if (FirebaseMessaging.getInstance().getToken() == null
+              || FirebaseMessaging.getInstance().getToken().equals("")) {
+            boolean regIdStatus = false;
+            while (!regIdStatus) {
+              token =
+                  AppController.getHelperSharedPreference()
+                      .readPreference(LoginCallbackActivity.this, "deviceToken", "");
+              if (!token.isEmpty()) {
+                regIdStatus = true;
+              }
+            }
+          } else {
+
+            FirebaseMessaging.getInstance().getToken()
+                .addOnCompleteListener(new OnCompleteListener<String>() {
+                  @Override
+                  public void onComplete(@NonNull Task<String> task) {
+                    if (!task.isSuccessful()) {
+                      Log.e("Krishna", "Fetching FCM registration token failed: "+task.getException());
+                      return;
+                    }
+                    gcmToken = task.getResult();
+                    Log.e("Krishna", "Fetching FCM registration token success: "+task.getResult());
+                  }
+                });
+
+            AppController.getHelperSharedPreference()
+                .writePreference(
+                    getApplicationContext(),
+                    "deviceToken",
+                    gcmToken);
+            token =
+                AppController.getHelperSharedPreference()
+                    .readPreference(getApplicationContext(), "deviceToken", "");
+          }
+//          return token;
+//        }
+          String finalToken = token;
+          handler.post(new Runnable() {
+            @Override
+            public void run() {
+              callUpdateProfileWebService(finalToken);
+            }
+          });
+        }
+      });
+
+  }
+//    @Override
+//    protected String doInBackground(String... params) {
+//      String token = "";
+//
+//      if (FirebaseMessaging.getInstance().getToken() == null
+//          || FirebaseMessaging.getInstance().getToken().equals("")) {
+//        boolean regIdStatus = false;
+//        while (!regIdStatus) {
+//          token =
+//              AppController.getHelperSharedPreference()
+//                  .readPreference(LoginCallbackActivity.this, "deviceToken", "");
+//          if (!token.isEmpty()) {
+//            regIdStatus = true;
+//          }
+//        }
+//      } else {
+//
+//        FirebaseMessaging.getInstance().getToken()
+//                .addOnCompleteListener(new OnCompleteListener<String>() {
+//                  @Override
+//                  public void onComplete(@NonNull Task<String> task) {
+//                    if (!task.isSuccessful()) {
+//                      Log.e("Krishna", "Fetching FCM registration token failed: "+task.getException());
+//                      return;
+//                    }
+//                     gcmToken = task.getResult();
+//                    Log.e("Krishna", "Fetching FCM registration token success: "+task.getResult());
+//                  }
+//                });
+//
+//        AppController.getHelperSharedPreference()
+//            .writePreference(
+//                LoginCallbackActivity.this,
+//                "deviceToken",
+//                    gcmToken);
+//        token =
+//            AppController.getHelperSharedPreference()
+//                .readPreference(LoginCallbackActivity.this, "deviceToken", "");
+//      }
+//      return token;
+//    }
+
+//    @Override
+//    protected void onPostExecute(String token) {
+//      callUpdateProfileWebService(token);
+//    }
+
+//    @Override
+//    protected void onPreExecute() {
+//      AppController.getHelperProgressDialog()
+//          .showProgress(LoginCallbackActivity.this, "", "", false);
+//    }
   }
 
   private void callUpdateProfileWebService(String deviceToken) {
@@ -333,7 +482,7 @@ public class LoginCallbackActivity extends AppCompatActivity
     headers.put("Authorization", "Bearer " + userAuth);
     headers.put("userId", userId);
 
-    JSONObject jsonObjBody = new JSONObject();
+   /* JSONObject jsonObjBody = new JSONObject();
     JSONObject infoJson = new JSONObject();
     try {
       infoJson.put("os", "android");
@@ -355,9 +504,19 @@ public class LoginCallbackActivity extends AppCompatActivity
       } catch (JSONException e) {
         Logger.log(e);
       }
-    }
-
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+    }*/
+    updateProfileRequestData = new UpdateProfileRequestData();
+    Settings settings = new Settings();
+    settings.setLocalNotifications(true);
+    settings.setPasscode(true);
+    settings.setRemoteNotifications(true);
+    updateProfileRequestData.setSettings(settings);
+    Info info = new Info();
+    info.setOs("android");
+    info.setAppVersion(BuildConfig.VERSION_NAME + "." + BuildConfig.VERSION_CODE);
+    info.setDeviceToken(deviceToken);
+    updateProfileRequestData.setInfo(info);
+    /*ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "post_object",
             Urls.UPDATE_USER_PROFILE,
@@ -372,7 +531,36 @@ public class LoginCallbackActivity extends AppCompatActivity
     UpdateUserProfileEvent updateUserProfileEvent = new UpdateUserProfileEvent();
     updateUserProfileEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performUpdateUserProfile(updateUserProfileEvent);
+    userModulePresenter.performUpdateUserProfile(updateUserProfileEvent);*/
+    participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+            .updateUserProfile(headers, updateProfileRequestData),
+        (data) -> {
+          try {
+            setUpdateProfile(data);
+          } catch (Exception e) {
+            Log.e("TAG", e.getMessage());
+          }
+        }, (error) -> {
+          String errormsg = AppController.getErrorMessage(error);
+          AppController.getHelperProgressDialog().dismissDialog();
+          Toast.makeText(this, errormsg, Toast.LENGTH_SHORT).show();
+          finish();
+        });
+  }
+
+  private void setUpdateProfile(UpdateUserProfileData updateProfile) {
+    
+      updateUserProfileData = updateProfile;
+      if (updateUserProfileData != null) {
+        callUserProfileWebService();
+      } else {
+        Toast.makeText(
+                        this, getResources().getString(R.string.not_able_to_login), Toast.LENGTH_SHORT)
+                .show();
+        finish();
+      }
+    
   }
 
   private void callUserProfileWebService() {
@@ -380,7 +568,7 @@ public class LoginCallbackActivity extends AppCompatActivity
     header.put("Authorization", "Bearer " + userAuth);
     header.put("userId", userId);
 
-    GetUserProfileEvent getUserProfileEvent = new GetUserProfileEvent();
+  /*  GetUserProfileEvent getUserProfileEvent = new GetUserProfileEvent();
     ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "get",
@@ -395,11 +583,61 @@ public class LoginCallbackActivity extends AppCompatActivity
             this);
     getUserProfileEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performGetUserProfile(getUserProfileEvent);
+    userModulePresenter.performGetUserProfile(getUserProfileEvent);*/
+    participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+                    .getUserProfile(header),
+            (data) -> {
+              try {
+                getProfileData(data);
+              } catch (Exception e) {
+                Log.e("TAG", e.getMessage());
+              }
+            }, (error) -> {
+
+            });
+  }
+
+  private void getProfileData(UserProfileData userProfileResponse) {
+
+      userProfileData = userProfileResponse;
+      if (userProfileData != null) {
+        if (userProfileData.getSettings().isPasscode()) {
+          AppController.getHelperProgressDialog().dismissDialog();
+          AppController.getHelperSharedPreference()
+                  .writePreference(
+                          LoginCallbackActivity.this, getString(R.string.initialpasscodeset), "no");
+
+          AppController.getHelperSharedPreference()
+                  .writePreference(LoginCallbackActivity.this, getString(R.string.userid), "" + userId);
+          AppController.getHelperSharedPreference()
+                  .writePreference(LoginCallbackActivity.this, getString(R.string.auth), "" + userAuth);
+          AppController.getHelperSharedPreference()
+                  .writePreference(LoginCallbackActivity.this, getString(R.string.verified), "true");
+          AppController.getHelperSharedPreference()
+                  .writePreference(
+                          LoginCallbackActivity.this,
+                          getString(R.string.email),
+                          "" + userProfileData.getProfile().getEmailId());
+
+          Intent intent = new Intent(LoginCallbackActivity.this, NewPasscodeSetupActivity.class);
+          intent.putExtra("from", INTENT_SIGNIN);
+          startActivityForResult(intent, PASSCODE_RESPONSE);
+        } else {
+          login();
+        }
+      } else {
+        Toast.makeText(
+                        this, getResources().getString(R.string.not_able_to_login), Toast.LENGTH_SHORT)
+                .show();
+        finish();
+      }
+
   }
 
   @Override
   protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
     if (requestCode == PASSCODE_RESPONSE) {
       login();
     } else if (requestCode == CHANGE_PASSWORD_RESPONSE && resultCode == RESULT_OK) {

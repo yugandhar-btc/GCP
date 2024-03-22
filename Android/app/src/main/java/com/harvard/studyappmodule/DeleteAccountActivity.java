@@ -29,6 +29,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatTextView;
 import com.google.gson.Gson;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.events.DeleteAccountEvent;
 import com.harvard.studyappmodule.studymodel.DeleteAccountData;
@@ -42,6 +43,9 @@ import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.SharedPreferenceHelper;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import io.realm.Realm;
 import io.realm.RealmResults;
@@ -67,6 +71,7 @@ public class DeleteAccountActivity extends AppCompatActivity
   private CustomFirebaseAnalytics analyticsInstance;
   private TextView offlineIndicatior;
   private NetworkChangeReceiver networkChangeReceiver;
+  private ParticipantDataStoreAPIInterface anInterface;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +81,8 @@ public class DeleteAccountActivity extends AppCompatActivity
     realm = AppController.getRealmobj(this);
     analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
     networkChangeReceiver = new NetworkChangeReceiver(this);
+    anInterface = new ServiceManager()
+        .createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
     initializeXmlId();
     setTextForView();
     setFont();
@@ -219,42 +226,103 @@ public class DeleteAccountActivity extends AppCompatActivity
     Gson gson = new Gson();
     DeleteAccountData deleteAccountData = new DeleteAccountData();
     String json = gson.toJson(deleteAccountData);
-    JSONObject obj = null;
-    try {
-      obj = new JSONObject();
-      JSONArray jsonArray1 = new JSONArray();
-      if (studyIdList.size() > 0) {
-        JSONObject jsonObject;
-        for (int i = 0; i < studyIdList.size(); i++) {
-          jsonObject = new JSONObject();
-          jsonObject.put("studyId", studyIdList.get(i));
+    HashMap<String, Object> obj = new HashMap();
+    ArrayList jsonArray1 = new ArrayList();
+    if (studyIdList.size() > 0) {
+      HashMap jsonObject;
+      for (int i = 0; i < studyIdList.size(); i++) {
+        jsonObject = new HashMap();
+        jsonObject.put("studyId", studyIdList.get(i));
 
-          jsonArray1.put(jsonObject);
-        }
+        jsonArray1.add(jsonObject);
       }
-      obj.put("studyData", jsonArray1);
-    } catch (JSONException e) {
-      Logger.log(e);
     }
-    try {
-      ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
-          new ParticipantDatastoreConfigEvent(
-              "delete_object",
-              Urls.DELETE_ACCOUNT,
-              DELETE_ACCOUNT_REPSONSECODE,
-              DeleteAccountActivity.this,
-              LoginData.class,
-              null,
-              header,
-              obj,
-              false,
-              this);
-      deleteAccountEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
-      UserModulePresenter userModulePresenter = new UserModulePresenter();
-      userModulePresenter.performDeleteAccount(deleteAccountEvent);
-    } catch (Exception e) {
-      Logger.log(e);
-    }
+    obj.put("studyData", jsonArray1);
+    //    try {
+//      ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+//          new ParticipantDatastoreConfigEvent(
+//              "delete_object",
+//              Urls.DELETE_ACCOUNT,
+//              DELETE_ACCOUNT_REPSONSECODE,
+//              DeleteAccountActivity.this,
+//              LoginData.class,
+//              null,
+//              header,
+//              obj,
+//              false,
+//              this);
+//      deleteAccountEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
+//      UserModulePresenter userModulePresenter = new UserModulePresenter();
+//      userModulePresenter.performDeleteAccount(deleteAccountEvent);
+    deleteAccountApi(header,obj);
+  }
+
+  private void deleteAccountApi(HashMap<String, String> header, HashMap<String, Object> obj) {
+    NetworkRequest.performAsyncRequest(anInterface.deactivate(header, obj),
+        (data) -> {
+          AppController.getHelperProgressDialog().dismissDialog();
+          LoginData loginData = data;
+          runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+              if (loginData != null) {
+                try {
+                  dbServiceSubscriber.deleteDb(DeleteAccountActivity.this);
+                } catch (Exception e) {
+                  Logger.log(e);
+                }
+
+                Toast.makeText(
+                        DeleteAccountActivity.this,
+                        getResources().getString(R.string.account_deletion),
+                        Toast.LENGTH_SHORT)
+                    .show();
+                SharedPreferenceHelper.deletePreferences(DeleteAccountActivity.this);
+                // delete passcode from keystore
+                String pass = AppController.refreshKeys("passcode");
+                if (pass != null) {
+                  AppController.deleteKey("passcode_" + pass);
+                }
+                Intent intent = new Intent();
+                setResult(RESULT_OK, intent);
+                finish();
+              } else {
+                runOnUiThread(new Runnable() {
+                  @Override
+                  public void run() {
+                    Toast.makeText(DeleteAccountActivity.this, R.string.unable_to_parse, Toast.LENGTH_SHORT)
+                        .show();
+                  }
+                });
+              }
+            }
+          });
+        }, (error) -> {
+          int code = AppController.getErrorCode(error);
+          String errormsg = AppController.getErrorMessage(error);
+          if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+            AppController.checkRefreshToken(DeleteAccountActivity.this, new AppController.RefreshTokenListener() {
+              @Override
+              public void onRefreshTokenCompleted(String result) {
+                if (result.equalsIgnoreCase("sucess")) {
+                  header.put(
+                      "Authorization",
+                      "Bearer "
+                          + AppController.getHelperSharedPreference()
+                          .readPreference(DeleteAccountActivity.this, getResources().getString(R.string.auth), ""));
+                  deleteAccountApi(header,obj);
+                } else {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  Toast.makeText(DeleteAccountActivity.this, "session expired", Toast.LENGTH_LONG).show();
+                  AppController.getHelperSessionExpired(DeleteAccountActivity.this, "");
+                }
+              }
+            }, UrlTypeConstants.ParticipantDataStore);
+          } else {
+            AppController.getHelperProgressDialog().dismissDialog();
+            Toast.makeText(DeleteAccountActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+          }
+        });
   }
 
   @Override

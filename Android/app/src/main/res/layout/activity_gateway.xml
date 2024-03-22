@@ -87,8 +87,9 @@
 
         </RelativeLayout>
 
+
     </LinearLayout>
-    <TextView
+    <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/offlineIndicatior"
         android:layout_width="200dp"
         android:layout_height="30dp"
@@ -101,7 +102,7 @@
         android:textColor="@color/white"
         android:visibility="gone"
         android:textSize="16dp">
-    </TextView>
+    </androidx.appcompat.widget.AppCompatTextView>
     <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/mGetStarted"
         style="@style/TextType2"
@@ -111,6 +112,7 @@
         android:background="@drawable/rectangle_blue_white"
         android:gravity="center"
         android:text="@string/get_started"
-        android:textColor="@android:color/white" />
+        android:textColor="@android:color/white"
+        android:visibility="visible" />
 
 </RelativeLayout>

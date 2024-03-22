@@ -126,11 +126,11 @@ public class ConsentDocumentStepLayoutCustom extends LinearLayout implements Ste
 
   private void showDialog(final SubmitBar submitBar) {
     new AlertDialog.Builder(getContext())
-        .setTitle(R.string.rsb_consent_review_alert_title)
+        .setTitle(org.researchstack.backbone.R.string.rsb_consent_review_alert_title)
         .setMessage(confirmationDialogBody)
         .setCancelable(false)
         .setPositiveButton(
-            R.string.rsb_agree,
+                org.researchstack.backbone.R.string.rsb_agree,
             new DialogInterface.OnClickListener() {
               @Override
               public void onClick(DialogInterface dialog, int which) {
@@ -145,7 +145,7 @@ public class ConsentDocumentStepLayoutCustom extends LinearLayout implements Ste
               }
             })
         .setNegativeButton(
-            R.string.rsb_consent_review_cancel,
+            org.researchstack.backbone.R.string.rsb_consent_review_cancel,
             new DialogInterface.OnClickListener() {
               @Override
               public void onClick(DialogInterface dialog, int which) {

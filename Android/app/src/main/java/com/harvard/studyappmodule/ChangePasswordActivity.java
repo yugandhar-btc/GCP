@@ -22,6 +22,7 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -33,6 +34,7 @@ import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
 import com.harvard.FdaApplication;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.gatewaymodule.GatewayActivity;
 import com.harvard.usermodule.UserModulePresenter;
 import com.harvard.usermodule.event.ChangePasswordEvent;
@@ -44,6 +46,9 @@ import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.SharedPreferenceHelper;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.AuthServerInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.AuthServerConfigEvent;
 import java.util.HashMap;
 import org.json.JSONException;
@@ -277,30 +282,90 @@ public class ChangePasswordActivity extends AppCompatActivity
     header.put("appId", BuildConfig.APP_ID);
     header.put("mobilePlatform", "ANDROID");
 
-    JSONObject params = new JSONObject();
-    try {
-      params.put("currentPassword", oldPassword.getText().toString());
-      params.put("newPassword", newPassword.getText().toString());
-    } catch (JSONException e) {
-      e.printStackTrace();
-    }
+    HashMap params = new HashMap();
+    params.put("currentPassword", oldPassword.getText().toString());
+    params.put("newPassword", newPassword.getText().toString());
 
-    AuthServerConfigEvent authServerConfigEvent =
-        new AuthServerConfigEvent(
-            "put",
-            Urls.AUTH_SERVICE + "/" + userId + Urls.CHANGE_PASSWORD,
-            CHANGE_PASSWORD_REQUEST,
-            ChangePasswordActivity.this,
-            ChangePasswordData.class,
-            null,
-            header,
-            params,
-            false,
-            ChangePasswordActivity.this);
-    ChangePasswordEvent changePasswordEvent = new ChangePasswordEvent();
-    changePasswordEvent.setAuthServerConfigEvent(authServerConfigEvent);
-    UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performChangePassword(changePasswordEvent);
+//    AuthServerConfigEvent authServerConfigEvent =
+//        new AuthServerConfigEvent(
+//            "put",
+//            Urls.AUTH_SERVICE + "/" + userId + Urls.CHANGE_PASSWORD,
+//            CHANGE_PASSWORD_REQUEST,
+//            ChangePasswordActivity.this,
+//            ChangePasswordData.class,
+//            null,
+//            header,
+//            params,
+//            false,
+//            ChangePasswordActivity.this);
+//    ChangePasswordEvent changePasswordEvent = new ChangePasswordEvent();
+//    changePasswordEvent.setAuthServerConfigEvent(authServerConfigEvent);
+//    UserModulePresenter userModulePresenter = new UserModulePresenter();
+//    userModulePresenter.performChangePassword(changePasswordEvent);
+    callChangePasswordApICall(userId,header,params);
+  }
+
+  private void callChangePasswordApICall(String userId, HashMap<String, String> header, HashMap params) {
+    AuthServerInterface authServerInterface = new ServiceManager()
+        .createService(AuthServerInterface.class, UrlTypeConstants.AuthServer);
+    NetworkRequest.performAsyncRequest(authServerInterface.changePassword(userId, header, params),
+        (data) -> {
+          runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+              AppController.getHelperProgressDialog().dismissDialog();
+              try {
+                AppController.getHelperHideKeyboard(ChangePasswordActivity.this);
+              } catch (Exception e) {
+                Logger.log(e);
+              }
+              if (from != null && from.equalsIgnoreCase("ProfileFragment")) {
+                Toast.makeText(
+                        ChangePasswordActivity.this, getResources().getString(R.string.password_change_message), Toast.LENGTH_SHORT)
+                    .show();
+                finish();
+              } else {
+                Toast.makeText(
+                        ChangePasswordActivity.this, getResources().getString(R.string.password_change_message), Toast.LENGTH_SHORT)
+                    .show();
+                Intent intent = new Intent();
+                setResult(RESULT_OK, intent);
+                finish();
+              }
+
+            }
+          });
+        }, (error) -> {
+          runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+              int code = AppController.getErrorCode(error);
+              String errormsg = AppController.getErrorMessage(error);
+              if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+                AppController.checkRefreshToken(ChangePasswordActivity.this, new AppController.RefreshTokenListener() {
+                  @Override
+                  public void onRefreshTokenCompleted(String result) {
+                    if (result.equalsIgnoreCase("sucess")) {
+                      header.put(
+                          "Authorization",
+                          "Bearer "
+                              + AppController.getHelperSharedPreference()
+                              .readPreference(ChangePasswordActivity.this, getResources().getString(R.string.auth), ""));
+                      callChangePasswordApICall(userId, header, params);
+                    } else {
+                      AppController.getHelperProgressDialog().dismissDialog();
+                      Toast.makeText(ChangePasswordActivity.this, "session expired", Toast.LENGTH_LONG).show();
+                      AppController.getHelperSessionExpired(ChangePasswordActivity.this, "");
+                    }
+                  }
+                }, UrlTypeConstants.AuthServer);
+              } else {
+                AppController.getHelperProgressDialog().dismissDialog();
+                Toast.makeText(ChangePasswordActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+              }
+            }
+          });
+        });
   }
 
   @Override
