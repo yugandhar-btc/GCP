@@ -166,19 +166,16 @@ public class FDASchedulerService {
       pushNotificationBeans =
           notificationDAO.getPushNotificationList(
               FdahpStudyDesignerUtil.getTimeStamp(date, time).toString());
-      logger.debug("begin sendPushNotification() pushNotificationBeans"+pushNotificationBeans.toString());
       // pushNotificationToSaveInHistory = pushNotificationBeans;
       if ((pushNotificationBeans != null) && !pushNotificationBeans.isEmpty()) {
         for (PushNotificationBean p : pushNotificationBeans) {
           if (p.getAppId() == null) {
             List<String> appIds = notificationService.getGatwayAppList();
-            logger.debug("begin sendPushNotification() appIds"+appIds.toString());
             if (!appIds.isEmpty()) {
               for (String appId : appIds) {
                 PushNotificationBean pushBean = new PushNotificationBean();
                 BeanUtils.copyProperties(pushBean, p);
                 pushBean.setAppId(appId);
-                logger.debug("begin sendPushNotification() pushNotificationBeanswithAppId"+pushNotificationBeanswithAppId.toString());
                 pushNotificationBeanswithAppId.add(pushBean);
               }
             }
@@ -198,18 +195,15 @@ public class FDASchedulerService {
           }
         }
         List<PushNotificationBean> pushNotification = new ArrayList<PushNotificationBean>();
-        logger.debug("begin sendPushNotification() finalPushNotificationBeansbeforeloop"+finalPushNotificationBeans.toString());
         for (PushNotificationBean finalPushNotificationBean : finalPushNotificationBeans) {
           StudyBo studyDetails =
               studyDAO.getStudyByLatestVersion(finalPushNotificationBean.getCustomStudyId());
           String deviceType = null;
           if (studyDetails != null
               && studyDetails.getPlatform().equalsIgnoreCase(FdahpStudyDesignerConstants.IOS)) {
-        	  logger.debug("begin sendPushNotification() IOS"+studyDetails.toString()); 
             deviceType = FdahpStudyDesignerConstants.DEVICE_IOS;
           } else if (studyDetails != null
               && studyDetails.getPlatform().equalsIgnoreCase(FdahpStudyDesignerConstants.ANDROID)) {
-        	  logger.debug("begin sendPushNotification() ANDROID"+studyDetails.toString()); 
             deviceType = FdahpStudyDesignerConstants.DEVICE_ANDROID;
           }
 
@@ -217,19 +211,15 @@ public class FDASchedulerService {
           pushNotification.add(finalPushNotificationBean);
 
           JSONArray arrayToJson = new JSONArray(objectMapper.writeValueAsString(pushNotification));
-            logger.debug("FDASchedulerService - sendPushNotification  arrayToJson" + arrayToJson);
           JSONObject json = new JSONObject();
           json.put("notifications", arrayToJson);
-             logger.debug("FDASchedulerService - sendPushNotification arrayToJson1 " + arrayToJson);
 
           HttpParams httpParams = new BasicHttpParams();
           HttpConnectionParams.setConnectionTimeout(httpParams, 30000);
           HttpConnectionParams.setSoTimeout(httpParams, 30000);
           HttpClient client = new DefaultHttpClient(httpParams);
-          logger.debug("begin getAccessToken()"+oauthService.getAccessToken());
           HttpResponse response =
               invokePushNotificationApi(json, client, oauthService.getAccessToken());
-          logger.debug("FDASchedulerService - sendPushNotification response " + response.toString());
           if (response.getStatusLine().getStatusCode() == HttpStatus.UNAUTHORIZED.value()) {
         	  logger.debug("FDASchedulerService - sendPushNotification UNAUTHORIZED " + response.toString());
             // Below method is called to indicate that the content of this entity is no longer

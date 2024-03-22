@@ -5853,7 +5853,6 @@ public class StudyDAOImpl implements StudyDAO {
     logger.entry("begin saveUnsignedDocumentOnCloud()");
     Map<String, String> configMap = FdahpStudyDesignerUtil.getAppProperties();
     String enabled = configMap.get("enableConsentManagementAPI");
-    logger.debug("begin saveUnsignedDocumentOnCloud()",enabled);
     try {
       if (StringUtils.isNotEmpty(enabled) && Boolean.valueOf(enabled)) {
 
@@ -5878,10 +5877,8 @@ public class StudyDAOImpl implements StudyDAO {
                             .replaceAll("&#34;", "'")
                             .replaceAll("em>", "i>")
                             .replaceAll("<a", "<a style='text-decoration:underline;color:blue;'")));
-        logger.debug("begin saveUnsignedDocumentOnCloud()",consentDoc);
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
         HtmlConverter.convertToPdf(Jsoup.parse(consentDoc).wholeText(), byteStream);
-        logger.debug("begin saveUnsignedDocumentOnCloud() convert done");
         String gcsUri =
             FdahpStudyDesignerUtil.saveFile(
                 newConsentBo.getVersion()
@@ -5890,16 +5887,13 @@ public class StudyDAOImpl implements StudyDAO {
                     + ".pdf",
                 byteStream.toByteArray(),
                 studyBo.getCustomStudyId() + "/" + "unsignedDocuments");
-        logger.debug("begin saveUnsignedDocumentOnCloud() saveFIle Succheufully",gcsUri);
         Map<String, String> metadata = new HashMap<String, String>();
         metadata.put("StudyId", studyBo.getCustomStudyId());
 
         // Create Dataset in Google Healthcare API
         try {
           consentApis.createDatasetInHealthcareAPI(studyBo.getCustomStudyId());
-          logger.debug("begin saveUnsignedDocumentOnCloud() createDatasetInHealthcareAPI Sucussfully");
         } catch (Exception e) {
-        	logger.debug("createDatasetInHealthcareAPI erorr",e.getStackTrace());
           if (e.getMessage().contains("already exists")) {
             logger.error(
                 "StudyDAOImpl - Create Dataset in Google Healthcare API - ERROR ", e.getMessage());
@@ -5909,21 +5903,16 @@ public class StudyDAOImpl implements StudyDAO {
 
         // Create Consent store in Google Healthcare API
         try {
-        	logger.debug("consentStoreGet before creating ");
           consentApis.consentStoreGet(
               "CONSENT_" + studyBo.getCustomStudyId(), studyBo.getCustomStudyId());
         } catch (Exception e) {
-        	logger.debug("consentStoreGet before creating error ",e.getStackTrace());
-        	logger.debug("consentStoreGet before creating error in message ",e.getMessage());
 			/*
 			 * if (e.getMessage().contains("not exist")) { consentApis.createConsentStore(
 			 * "CONSENT_" + studyBo.getCustomStudyId(), studyBo.getCustomStudyId()); }
 			 */
           consentApis.createConsentStore(
                   "CONSENT_" + studyBo.getCustomStudyId(), studyBo.getCustomStudyId());
-          logger.debug("StudyDAOImpl - ConsentStoreGet in Google Healthcare API - succusefully ", e.getMessage());
         }
-        logger.debug("consentStoreGet before createConsentArtifact ");
         consentApis.createConsentArtifact(
             metadata,
             userId,
@@ -5931,11 +5920,10 @@ public class StudyDAOImpl implements StudyDAO {
             gcsUri,
             studyBo.getCustomStudyId(),
             "CONSENT_" + studyBo.getCustomStudyId());
-        logger.debug("consentStoreGet after createConsentArtifact Succufully");
       }
 
     } catch (IOException e) {
-      logger.debug("StudyDAOImpl - saveUnsignedDocumentOnCloud() - ERROR ", e.getMessage());
+      logger.error("StudyDAOImpl - saveUnsignedDocumentOnCloud() - ERROR ", e.getMessage());
     }
     logger.exit("saveUnsignedDocumentOnCloud() - Ends");
   }
