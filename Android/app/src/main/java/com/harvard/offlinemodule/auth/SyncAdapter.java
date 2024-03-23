@@ -16,31 +16,44 @@
 package com.harvard.offlinemodule.auth;
 
 import android.accounts.Account;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.AbstractThreadedSyncAdapter;
 import android.content.ContentProviderClient;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SyncResult;
-import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
+
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkInfo;
+import androidx.work.WorkManager;
+
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.offlinemodule.model.OfflineData;
+//import com.harvard.offlinemodule.model.RequestInput;
 import com.harvard.storagemodule.DbServiceSubscriber;
-import com.harvard.studyappmodule.StudyModulePresenter;
 import com.harvard.studyappmodule.events.ProcessResponseEvent;
-import com.harvard.usermodule.UserModulePresenter;
-import com.harvard.usermodule.event.UpdatePreferenceEvent;
-import com.harvard.usermodule.webservicemodel.LoginData;
-import com.harvard.utils.ActiveTaskService;
 import com.harvard.utils.AppController;
 import com.harvard.utils.Logger;
 import com.harvard.webservicemodule.apihelper.ApiCall;
-import com.harvard.webservicemodule.events.ParticipantEnrollmentDatastoreConfigEvent;
-import com.harvard.webservicemodule.events.ResponseDatastoreConfigEvent;
+import com.harvard.webservicemodule.apihelper.EnrollmentDataStoreInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ResponseServerInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
+
 import io.realm.Realm;
 import io.realm.RealmResults;
+import okhttp3.RequestBody;
+
 import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -50,6 +63,13 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter
   private Context context;
   private static final int UPDATE_USERPREFERENCE_RESPONSECODE = 102;
   private DbServiceSubscriber dbServiceSubscriber;
+  public static final String TAG_MY_WORK = "BACKUP_WORKER_TAG";
+  private EnrollmentDataStoreInterface enrollmentDataStoreInterface;
+  private ResponseServerInterface responseServerInterface;
+  private JsonObject json;
+  private RequestBody body;
+  RealmResults<OfflineData> results = null;
+  Realm realm;
 
   public SyncAdapter(Context context, boolean autoInitialize) {
     super(context, autoInitialize);
@@ -64,17 +84,33 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter
       String authority,
       ContentProviderClient contentProviderClient,
       SyncResult syncResult) {
-
-    if (!isMyServiceRunning(ActiveTaskService.class)) {
-      Intent intent = new Intent(context, ActiveTaskService.class);
-      intent.putExtra("SyncAdapter", "yes");
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(intent);
-      } else {
-        context.startService(intent);
-      }
-    }
+// check if your work is not already scheduled
+    Log.e("check","sync data in background");
+    OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(ActiveTaskWorkManger.class).addTag(TAG_MY_WORK).build();
+    WorkManager.getInstance(context).enqueue(request);
+//    if(!isWorkScheduled(TAG_MY_WORK)) {
+//      // schedule your work
+//      scheduleWork(TAG_MY_WORK,context);
+//    }
+//    if (!isMyServiceRunning(ActiveTaskService.class)) {
+//      OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(ActiveTaskWorkManger.class).addTag("BACKUP_WORKER_TAG").build();
+//      WorkManager.getInstance(context).enqueue(request);
+//      Intent intent = new Intent(context, ActiveTaskService.class);
+//      intent.putExtra("SyncAdapter", "yes");
+//      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//        context.startForegroundService(intent);
+//      } else {
+//        context.startService(intent);
+//      }
+//    }
   }
+
+    public static void scheduleWork(String tag, Context context) {
+    Log.e("check","worker manger is not-up");
+
+    }
+
+
 
   private boolean isMyServiceRunning(Class<?> serviceClass) {
     ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
@@ -87,23 +123,49 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter
     return false;
   }
 
+  private boolean isWorkScheduled(String tag) {
+    WorkManager instance = WorkManager.getInstance(context);
+    ListenableFuture<List<WorkInfo>> statuses = instance.getWorkInfosByTag(tag);
+    try {
+      boolean running = false;
+      List<WorkInfo> workInfoList = statuses.get();
+      for (WorkInfo workInfo : workInfoList) {
+        WorkInfo.State state = workInfo.getState();
+        running = state == WorkInfo.State.RUNNING | state == WorkInfo.State.ENQUEUED;
+      }
+      Log.e("check","status of workermanger "+running);
+      return running;
+    } catch (ExecutionException e) {
+      e.printStackTrace();
+      return false;
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+      return false;
+    }
+  }
+
   private void getPendingData() {
     try {
-      dbServiceSubscriber = new DbServiceSubscriber();
-      Realm realm = AppController.getRealmobj(context);
-      RealmResults<OfflineData> results = dbServiceSubscriber.getOfflineData(realm);
-      if (!results.isEmpty()) {
-        for (int i = 0; i < results.size(); i++) {
-          String httpMethod = results.get(i).getHttpMethod();
-          String url = results.get(i).getUrl();
-          String jsonObject = results.get(i).getJsonParam();
-          String serverType = results.get(i).getServerType();
-          updateServer(httpMethod, url, jsonObject, serverType);
-          break;
+      ((Activity) context).runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          realm = AppController.getRealmobj(context);
+          dbServiceSubscriber = new DbServiceSubscriber();
+          results = dbServiceSubscriber.getOfflineData(realm);
+          if (!results.isEmpty() || results != null) {
+            for (int i = 0; i < results.size(); i++) {
+              String httpMethod = results.get(i).getHttpMethod();
+              String url = results.get(i).getUrl();
+              String jsonObject = results.get(i).getJsonParam();
+              String serverType = results.get(i).getServerType();
+              updateServer(httpMethod, url, jsonObject, serverType);
+              break;
+            }
+          } else {
+            dbServiceSubscriber.closeRealmObj(realm);
+          }
         }
-      } else {
-        dbServiceSubscriber.closeRealmObj(realm);
-      }
+      });
     } catch (Exception e) {
       Logger.log(e);
     }
@@ -115,22 +177,127 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter
     JSONObject jsonObject = null;
     try {
       jsonObject = new JSONObject(jsonObjectString);
+      JsonParser jsonParser = new JsonParser();
+      json = (JsonObject)jsonParser.parse(jsonObjectString);
+
     } catch (JSONException e) {
       Logger.log(e);
     }
 
     if (serverType.equalsIgnoreCase("ParticipantEnrollmentDatastore")) {
-      HashMap<String, String> header = new HashMap();
-      header.put(
-          "auth",
-          AppController.getHelperSharedPreference()
-              .readPreference(context, context.getResources().getString(R.string.auth), ""));
-      header.put(
-          "userId",
-          AppController.getHelperSharedPreference()
-              .readPreference(context, context.getResources().getString(R.string.userid), ""));
+     sendParticipantDetails(url);
+    } else if (serverType.equalsIgnoreCase("ResponseDatastore")) {
+     sendResponseData(url);
+    }
+  }
 
-      UpdatePreferenceEvent updatePreferenceEvent = new UpdatePreferenceEvent();
+  private void sendResponseData(String url) {
+    HashMap<String, String> header = new HashMap();
+    header.put(
+            "Authorization",
+            "Bearer "+AppController.getHelperSharedPreference()
+                    .readPreference(context, context.getResources().getString(R.string.auth), ""));
+    header.put(
+            "userId",
+            AppController.getHelperSharedPreference()
+                    .readPreference(context, context.getResources().getString(R.string.userid), ""));
+//    RequestInput requestInput = new RequestInput();
+//    requestInput.setJsonObject(json);
+
+    responseServerInterface = new ServiceManager()
+            .createService(ResponseServerInterface.class, UrlTypeConstants.ResponseDataStore);
+    NetworkRequest.performAsyncRequest(responseServerInterface.getRequest(url, header,body),
+            (data) -> {
+              Log.d("ResponseDataStore:", ""+data);
+
+
+                  dbServiceSubscriber.removeOfflineData(context);
+                  getPendingData();
+
+            }, (error) -> {
+              Log.d("getRequests:", ""+error.toString());
+              int code = AppController.getErrorCode(error);
+              String errormsg = AppController.getErrorMessage(error);
+              if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+                AppController.checkRefreshToken(context, new AppController.RefreshTokenListener() {
+                  @Override
+                  public void onRefreshTokenCompleted(String result) {
+                    if (result.equalsIgnoreCase("sucess")) {
+                      sendResponseData(url);
+                    } else {
+                      AppController.getHelperProgressDialog().dismissDialog();
+                      AppController.getHelperSessionExpired(context, "");
+                    }
+                  }
+                }, UrlTypeConstants.AuthServer);
+              }
+
+            });
+//    ProcessResponseEvent processResponseEvent = new ProcessResponseEvent();
+    /*  ResponseDatastoreConfigEvent responseDatastoreConfigEvent =
+          new ResponseDatastoreConfigEvent(
+              httpMethod,
+              url,
+              UPDATE_USERPREFERENCE_RESPONSECODE,
+              context,
+              LoginData.class,
+              null,
+              header,
+              jsonObject,
+              false,
+              this);
+
+      processResponseEvent.setResponseDatastoreConfigEvent(responseDatastoreConfigEvent);
+      StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
+      studyModulePresenter.performProcessResponse(processResponseEvent);*/
+  }
+
+  private void sendParticipantDetails(String url) {
+    HashMap<String, String> header = new HashMap();
+    header.put(
+        "Authorization",
+        "Bearer "+ AppController.getHelperSharedPreference()
+                    .readPreference(context, context.getResources().getString(R.string.auth), ""));
+    header.put(
+            "userId",
+            AppController.getHelperSharedPreference()
+                    .readPreference(context, context.getResources().getString(R.string.userid), ""));
+//    RequestInput requestInput = new RequestInput();
+//    requestInput.setJsonObject(json);
+    enrollmentDataStoreInterface = new ServiceManager()
+            .createService(EnrollmentDataStoreInterface.class, UrlTypeConstants.EnrollmentDataStore);
+    NetworkRequest.performAsyncRequest(enrollmentDataStoreInterface.getRequest(url, header,body),
+            (data) -> {
+              Log.d("getRequests:", ""+data);
+
+              ((Activity)context).runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  dbServiceSubscriber.removeOfflineData(context);
+                  getPendingData();
+                }
+              });
+            }, (error) -> {
+              Log.d("getRequests:", ""+error.toString());
+              int code = AppController.getErrorCode(error);
+              String errormsg = AppController.getErrorMessage(error);
+              if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+                AppController.checkRefreshToken(context, new AppController.RefreshTokenListener() {
+                  @Override
+                  public void onRefreshTokenCompleted(String result) {
+                    if (result.equalsIgnoreCase("sucess")) {
+                      sendParticipantDetails(url);
+
+                    } else {
+                      AppController.getHelperProgressDialog().dismissDialog();
+                      AppController.getHelperSessionExpired(context, "");
+                    }
+                  }
+                }, UrlTypeConstants.AuthServer);
+              }
+            });
+
+     /* UpdatePreferenceEvent updatePreferenceEvent = new UpdatePreferenceEvent();
       ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
           new ParticipantEnrollmentDatastoreConfigEvent(
               httpMethod,
@@ -146,35 +313,7 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter
       updatePreferenceEvent.setParticipantEnrollmentDatastoreConfigEvent(
           participantEnrollmentDatastoreConfigEvent);
       UserModulePresenter userModulePresenter = new UserModulePresenter();
-      userModulePresenter.performUpdateUserPreference(updatePreferenceEvent);
-    } else if (serverType.equalsIgnoreCase("ResponseDatastore")) {
-      HashMap<String, String> header = new HashMap();
-      header.put(
-          "auth",
-          AppController.getHelperSharedPreference()
-              .readPreference(context, context.getResources().getString(R.string.auth), ""));
-      header.put(
-          "userId",
-          AppController.getHelperSharedPreference()
-              .readPreference(context, context.getResources().getString(R.string.userid), ""));
-      ProcessResponseEvent processResponseEvent = new ProcessResponseEvent();
-      ResponseDatastoreConfigEvent responseDatastoreConfigEvent =
-          new ResponseDatastoreConfigEvent(
-              httpMethod,
-              url,
-              UPDATE_USERPREFERENCE_RESPONSECODE,
-              context,
-              LoginData.class,
-              null,
-              header,
-              jsonObject,
-              false,
-              this);
-
-      processResponseEvent.setResponseDatastoreConfigEvent(responseDatastoreConfigEvent);
-      StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
-      studyModulePresenter.performProcessResponse(processResponseEvent);
-    }
+      userModulePresenter.performUpdateUserPreference(updatePreferenceEvent);*/
   }
 
   @Override
@@ -186,5 +325,8 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter
   }
 
   @Override
-  public void asyncResponseFailure(int responseCode, String errormsg, String statusCode) {}
+  public void asyncResponseFailure(int responseCode, String errormsg, String statusCode) {
+    Log.d("asyncResponseFailure:", ""+responseCode);
+
+  }
 }

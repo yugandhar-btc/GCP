@@ -17,6 +17,7 @@ package com.harvard.studyappmodule;
 
 import android.content.DialogInterface;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
@@ -24,7 +25,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatTextView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.notificationmodule.model.NotificationDb;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.events.GetUserStudyListEvent;
@@ -39,16 +42,20 @@ import com.harvard.utils.CustomFirebaseAnalytics;
 import com.harvard.utils.Logger;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.StudyDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.StudyDatastoreConfigEvent;
 import io.realm.Realm;
 import io.realm.RealmList;
 import io.realm.RealmResults;
+import rx.Subscription;
+
 import java.text.ParseException;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.HashMap;
 
 public class NotificationActivity extends AppCompatActivity
     implements ApiCall.OnAsyncRequestComplete {
@@ -59,14 +66,18 @@ public class NotificationActivity extends AppCompatActivity
   private DbServiceSubscriber dbServiceSubscriber;
   private Realm realm;
   private CustomFirebaseAnalytics analyticsInstance;
+  private StudyDataStoreAPIInterface apiInterface;
+  private Subscription mSBNetworkSubscriptionl;
+  private UserProfileData userProfileData;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
 
     setContentView(R.layout.activity_notification);
+    realm = AppController.getRealmobj(NotificationActivity.this);
     dbServiceSubscriber = new DbServiceSubscriber();
-    realm = AppController.getRealmobj(this);
+    userProfileData = dbServiceSubscriber.getUserProfileData(realm);
     analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
     AppController.getHelperSharedPreference()
         .writePreference(this, getString(R.string.notification), "false");
@@ -122,29 +133,301 @@ public class NotificationActivity extends AppCompatActivity
 
   private void getNotification() {
     AppController.getHelperProgressDialog().showProgress(NotificationActivity.this, "", "", false);
-    GetUserStudyListEvent getUserStudyListEvent = new GetUserStudyListEvent();
-    HashMap<String, String> header = new HashMap();
+//    GetUserStudyListEvent getUserStudyListEvent = new GetUserStudyListEvent();
+//    HashMap<String, String> header = new HashMap();
     String verificationTime = "";
-    UserProfileData userProfileData = dbServiceSubscriber.getUserProfileData(realm);
     if (userProfileData != null && userProfileData.getProfile() != null)
       verificationTime = userProfileData.getProfile().getVerificationTime();
-    String url = Urls.NOTIFICATIONS + "?skip=0" + "&verificationTime=" + verificationTime;
-    StudyDatastoreConfigEvent studyDatastoreConfigEvent =
-        new StudyDatastoreConfigEvent(
-            "get",
-            url,
-            NOTIFICATIONS,
-            this,
-            NotificationData.class,
-            null,
-            header,
-            null,
-            false,
-            this);
+//    String url = Urls.NOTIFICATIONS + "?skip=0" + "&verificationTime=" + verificationTime;
+//    StudyDatastoreConfigEvent studyDatastoreConfigEvent =
+//        new StudyDatastoreConfigEvent(
+//            "get",
+//            url,
+//            NOTIFICATIONS,
+//            this,
+//            NotificationData.class,
+//            null,
+//            header,
+//            null,
+//            false,
+//            this);
+//
+//    getUserStudyListEvent.setStudyDatastoreConfigEvent(studyDatastoreConfigEvent);
+//    StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
+//    studyModulePresenter.performGetGateWayStudyList(getUserStudyListEvent);
+    apiInterface = new ServiceManager().createService(StudyDataStoreAPIInterface.class, UrlTypeConstants.StudyDataStore);
+    mSBNetworkSubscriptionl = NetworkRequest.performAsyncRequest(apiInterface
+            .getNotifications(0,verificationTime),
+        (data) -> {
+      try {
+        setNotification(data);
+      } catch (Exception e){
+        Log.e("check","exception is "+e);
+      }
+        }, (error) -> {
+      runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          int code = AppController.getErrorCode(error);
+          String errormsg = AppController.getErrorMessage(error);
+          if (code == 401) {
+            Toast.makeText(NotificationActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+            AppController.getHelperSessionExpired(NotificationActivity.this, errormsg);
+          } else {
+            AppController.getHelperProgressDialog().dismissDialog();
+            Calendar calendar = Calendar.getInstance();
+            calendar.set(Calendar.MILLISECOND, 0);
+            calendar.set(Calendar.SECOND, 0);
+            calendar.set(Calendar.MINUTE, 0);
+            calendar.set(Calendar.HOUR, 0);
+            RealmResults<NotificationDb> notificationsDb =
+                dbServiceSubscriber.getNotificationDbByDate(new Date(), realm);
+            RealmResults<NotificationDbResources> notificationsDbResources =
+                dbServiceSubscriber.getNotificationDbResourcesByDate(new Date(), realm);
+            RealmList<Notification> notifications = new RealmList<>();
+            if (notificationsDb != null) {
+              for (int i = 0; i < notificationsDb.size(); i++) {
+                Notification notification1 = new Notification();
+                notification1.setTitle(notificationsDb.get(i).getTitle());
+                if (notificationsDb.get(i).getType().equalsIgnoreCase("resources")) {
+                  notification1.setSubtype("Resource");
+                } else {
+                  notification1.setSubtype("Activity");
+                }
+                notification1.setStudyId(notificationsDb.get(i).getStudyId());
+                notification1.setMessage(notificationsDb.get(i).getDescription());
+                notification1.setDate(
+                    AppController.getDateFormatForApi().format(notificationsDb.get(i).getDateTime()));
+                notification1.setType("Study");
+                notification1.setAudience("");
+                notifications.add(notification1);
+              }
+            }
+            if (notificationsDbResources != null) {
+              for (int i = 0; i < notificationsDbResources.size(); i++) {
+                Notification notification1 = new Notification();
+                notification1.setTitle(notificationsDbResources.get(i).getTitle());
+                if (notificationsDbResources.get(i).getType().equalsIgnoreCase("resources")) {
+                  notification1.setSubtype("Resource");
+                } else {
+                  notification1.setSubtype("Activity");
+                }
+                notification1.setStudyId(notificationsDbResources.get(i).getStudyId());
+                notification1.setMessage(notificationsDbResources.get(i).getDescription());
+                notification1.setDate(
+                    AppController.getDateFormatForApi()
+                        .format(notificationsDbResources.get(i).getDateTime()));
+                notification1.setType("Study");
+                notification1.setAudience("");
+                notifications.add(notification1);
+              }
+            }
+            NotificationData notification = dbServiceSubscriber.getNotificationFromDB(realm);
+            if (notification != null) {
+              if (!AppController.getHelperSharedPreference()
+                  .readPreference(NotificationActivity.this, getString(R.string.userid), "")
+                  .equalsIgnoreCase("")) {
+                if (!AppController.isNetworkAvailable(NotificationActivity.this)) {
+                  AppController.offlineAlart(NotificationActivity.this);
+                }
+              } else {
+                androidx.appcompat.app.AlertDialog.Builder alertDialog =
+                    new androidx.appcompat.app.AlertDialog.Builder(
+                        NotificationActivity.this, R.style.Style_Dialog_Rounded_Corner);
+                alertDialog.setTitle("              You are offline");
+                alertDialog.setMessage("You are offline. Kindly check the internet connection.");
+                alertDialog.setCancelable(false);
+                alertDialog.setPositiveButton(
+                    "OK",
+                    new DialogInterface.OnClickListener() {
+                      @Override
+                      public void onClick(DialogInterface dialogInterface, int i) {
+                        Bundle eventProperties = new Bundle();
+                        //          eventProperties.putString(
+                        //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        //              getString(R.string.app_update_next_time_ok));
+                        //          analyticsInstance.logEvent(
+                        //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK,
+                        // eventProperties);
+                        dialogInterface.dismiss();
+                      }
+                    });
+                final androidx.appcompat.app.AlertDialog dialog = alertDialog.create();
+                dialog.show();
+              }
+              for (int i = 0; i < notification.getNotifications().size(); i++) {
+                if (notification.getNotifications().get(i).getType().equalsIgnoreCase("Study")) {
+                  Study study = dbServiceSubscriber.getStudyListFromDB(realm);
+                  if (study != null) {
+                    RealmList<StudyList> studyListArrayList = study.getStudies();
+                    for (int j = 0; j < studyListArrayList.size(); j++) {
+                      if (notification
+                          .getNotifications()
+                          .get(i)
+                          .getStudyId()
+                          .equalsIgnoreCase(studyListArrayList.get(j).getStudyId())) {
+                        if (studyListArrayList
+                            .get(j)
+                            .getStudyStatus()
+                            .equalsIgnoreCase(StudyFragment.IN_PROGRESS)) {
+                          notifications.add(notification.getNotifications().get(i));
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  notifications.add(notification.getNotifications().get(i));
+                }
+              }
+              Collections.sort(
+                  notifications,
+                  new Comparator<Notification>() {
+                    public int compare(Notification o1, Notification o2) {
+                      try {
+                        return AppController.getDateFormatForApi()
+                            .parse(o1.getDate())
+                            .compareTo(AppController.getDateFormatForApi().parse(o2.getDate()));
+                      } catch (ParseException e) {
+                        Logger.log(e);
+                      }
+                      return -1;
+                    }
+                  });
+              setRecyclearView(notifications);
+            } else {
+              if (!AppController.isNetworkAvailable(NotificationActivity.this)) {
+                androidx.appcompat.app.AlertDialog.Builder alertDialog =
+                    new androidx.appcompat.app.AlertDialog.Builder(
+                        NotificationActivity.this, R.style.Style_Dialog_Rounded_Corner);
+                alertDialog.setTitle("              You are offline");
+                alertDialog.setMessage("You are offline. Kindly check the internet connection.");
+                alertDialog.setCancelable(false);
+                alertDialog.setPositiveButton(
+                    "OK",
+                    new DialogInterface.OnClickListener() {
+                      @Override
+                      public void onClick(DialogInterface dialogInterface, int i) {
+                        Bundle eventProperties = new Bundle();
+                        //          eventProperties.putString(
+                        //              CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                        //              getString(R.string.app_update_next_time_ok));
+                        //          analyticsInstance.logEvent(
+                        //              CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK,
+                        // eventProperties);
+                        dialogInterface.dismiss();
+                      }
+                    });
+                final androidx.appcompat.app.AlertDialog dialog = alertDialog.create();
+                dialog.show();
+              }
+              Toast.makeText(NotificationActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+            }
+          }
+        }
+      });
+        });
+  }
 
-    getUserStudyListEvent.setStudyDatastoreConfigEvent(studyDatastoreConfigEvent);
-    StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
-    studyModulePresenter.performGetGateWayStudyList(getUserStudyListEvent);
+  private void setNotification(NotificationData data) {
+    AppController.getHelperProgressDialog().dismissDialog();
+    if (data != null) {
+      this.runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          Calendar calendar = Calendar.getInstance();
+          calendar.set(Calendar.MILLISECOND, 0);
+          calendar.set(Calendar.SECOND, 0);
+          calendar.set(Calendar.MINUTE, 0);
+          calendar.set(Calendar.HOUR, 0);
+          RealmResults<NotificationDb> notificationsDb =
+              dbServiceSubscriber.getNotificationDbByDate(new Date(), realm);
+          RealmResults<NotificationDbResources> notificationsDbResources =
+              dbServiceSubscriber.getNotificationDbResourcesByDate(new Date(), realm);
+          RealmList<Notification> notifications = new RealmList<>();
+          if (notificationsDb != null) {
+            for (int i = 0; i < notificationsDb.size(); i++) {
+              Notification notification1 = new Notification();
+              notification1.setTitle(notificationsDb.get(i).getTitle());
+              if (notificationsDb.get(i).getType().equalsIgnoreCase("resources")) {
+                notification1.setSubtype("Resource");
+              } else {
+                notification1.setSubtype("Activity");
+              }
+              notification1.setStudyId(notificationsDb.get(i).getStudyId());
+              notification1.setMessage(notificationsDb.get(i).getDescription());
+              notification1.setDate(
+                  AppController.getDateFormatForApi().format(notificationsDb.get(i).getDateTime()));
+              notification1.setType("Study");
+              notification1.setAudience("");
+              notifications.add(notification1);
+            }
+          }
+          if (notificationsDbResources != null) {
+            for (int i = 0; i < notificationsDbResources.size(); i++) {
+              Notification notification1 = new Notification();
+              notification1.setTitle(notificationsDbResources.get(i).getTitle());
+              if (notificationsDbResources.get(i).getType().equalsIgnoreCase("resources")) {
+                notification1.setSubtype("Resource");
+              } else {
+                notification1.setSubtype("Activity");
+              }
+              notification1.setStudyId(notificationsDbResources.get(i).getStudyId());
+              notification1.setMessage(notificationsDbResources.get(i).getDescription());
+              notification1.setDate(
+                  AppController.getDateFormatForApi()
+                      .format(notificationsDbResources.get(i).getDateTime()));
+              notification1.setType("Study");
+              notification1.setAudience("");
+              notifications.add(notification1);
+            }
+          }
+          NotificationData notification = data;
+          for (int i = 0; i < notification.getNotifications().size(); i++) {
+            if (notification.getNotifications().get(i).getType().equalsIgnoreCase("Study")) {
+
+              Study study = dbServiceSubscriber.getStudyListFromDB(realm);
+              if (study != null) {
+                RealmList<StudyList> studyListArrayList = study.getStudies();
+                for (int j = 0; j < studyListArrayList.size(); j++) {
+                  if (notification
+                      .getNotifications()
+                      .get(i)
+                      .getStudyId()
+                      .equalsIgnoreCase(studyListArrayList.get(j).getStudyId())) {
+                    if (studyListArrayList
+                        .get(j)
+                        .getStudyStatus()
+                        .equalsIgnoreCase(StudyFragment.IN_PROGRESS)) {
+                      notifications.add(notification.getNotifications().get(i));
+                    }
+                  }
+                }
+              }
+            } else {
+              notifications.add(notification.getNotifications().get(i));
+            }
+          }
+          Collections.sort(
+              notifications,
+              new Comparator<Notification>() {
+                public int compare(Notification o1, Notification o2) {
+                  try {
+                    return AppController.getDateFormatForApi()
+                        .parse(o2.getDate())
+                        .compareTo(AppController.getDateFormatForApi().parse(o1.getDate()));
+                  } catch (ParseException e) {
+                    Logger.log(e);
+                  }
+                  return -1;
+                }
+              });
+          setRecyclearView(notifications);
+          dbServiceSubscriber.saveNotification(notification, realm);
+        }
+      });
+    } else {
+      Toast.makeText(this, R.string.unable_to_parse, Toast.LENGTH_SHORT).show();
+    }
   }
 
   @Override

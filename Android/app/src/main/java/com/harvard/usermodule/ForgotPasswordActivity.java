@@ -19,6 +19,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -29,6 +30,7 @@ import androidx.appcompat.widget.AppCompatTextView;
 import com.harvard.AppConfig;
 import com.harvard.FdaApplication;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.usermodule.event.ForgotPasswordEvent;
 import com.harvard.usermodule.model.Apps;
@@ -39,7 +41,12 @@ import com.harvard.utils.Logger;
 import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.AuthServerInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.AuthServerConfigEvent;
+
+import io.realm.BuildConfig;
 import io.realm.Realm;
 import java.util.HashMap;
 
@@ -176,31 +183,84 @@ public class ForgotPasswordActivity extends AppCompatActivity
     DbServiceSubscriber dbServiceSubscriber = new DbServiceSubscriber();
     Realm realm = AppController.getRealmobj(ForgotPasswordActivity.this);
     Apps apps = dbServiceSubscriber.getApps(realm);
-    headers.put("contactEmail", apps.getContactUsEmail());
+    headers.put("contactUsEmail", apps.getContactUsEmail());
     headers.put("supportEmail", apps.getSupportEmail());
     headers.put("fromEmail", apps.getFromEmail());
+    headers.put("appName", apps.getAppName());
     dbServiceSubscriber.closeRealmObj(realm);
 
     HashMap<String, String> params = new HashMap<>();
     params.put("email", email.getText().toString());
     params.put("appId", AppConfig.APP_ID_VALUE);
-
-    ForgotPasswordEvent forgotPasswordEvent = new ForgotPasswordEvent();
-    AuthServerConfigEvent authServerConfigEvent =
-        new AuthServerConfigEvent(
-            "post",
-            Urls.FORGOT_PASSWORD,
-            FORGOT_PASSWORD_REQUEST,
-            ForgotPasswordActivity.this,
-            ForgotPasswordData.class,
-            params,
-            headers,
-            null,
-            false,
-            ForgotPasswordActivity.this);
-    forgotPasswordEvent.setAuthServerConfigEvent(authServerConfigEvent);
-    UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performForgotPassword(forgotPasswordEvent);
+//
+//    ForgotPasswordEvent forgotPasswordEvent = new ForgotPasswordEvent();
+//    AuthServerConfigEvent authServerConfigEvent =
+//        new AuthServerConfigEvent(
+//            "post",
+//            Urls.FORGOT_PASSWORD,
+//            FORGOT_PASSWORD_REQUEST,
+//            ForgotPasswordActivity.this,
+//            ForgotPasswordData.class,
+//            params,
+//            headers,
+//            null,
+//            false,
+//            ForgotPasswordActivity.this);
+//    forgotPasswordEvent.setAuthServerConfigEvent(authServerConfigEvent);
+//    UserModulePresenter userModulePresenter = new UserModulePresenter();
+//    userModulePresenter.performForgotPassword(forgotPasswordEvent);
+    AuthServerInterface authServerInterface = new ServiceManager()
+        .createService(AuthServerInterface.class, UrlTypeConstants.AuthServer);
+    NetworkRequest.performAsyncRequest(authServerInterface.forgotPassword(headers, params),
+        (data) -> {
+          runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+              AppController.getHelperProgressDialog().dismissDialog();
+              try {
+                AppController.getHelperHideKeyboard(ForgotPasswordActivity.this);
+              } catch (Exception e) {
+                Logger.log(e);
+              }
+              Toast.makeText(
+                      ForgotPasswordActivity.this, getResources().getString(R.string.forgot_password_error), Toast.LENGTH_SHORT)
+                  .show();
+              if (getIntent().getStringExtra("from") != null
+                  && getIntent().getStringExtra("from").equalsIgnoreCase("verification")) {
+                Intent intent = new Intent();
+                setResult(RESULT_OK, intent);
+                finish();
+              } else {
+                finish();
+              }
+            }
+          });
+        }, (error) -> {
+          runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+              int code = AppController.getErrorCode(error);
+              String errormsg = AppController.getErrorMessage(error);
+              AppController.getHelperProgressDialog().dismissDialog();
+              if (code == 401) {
+                Toast.makeText(ForgotPasswordActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+                AppController.getHelperSessionExpired(ForgotPasswordActivity.this, errormsg);
+              } else if (code == 403) {
+                Toast.makeText(ForgotPasswordActivity.this, errormsg, Toast.LENGTH_LONG).show();
+                Intent intent = new Intent(ForgotPasswordActivity.this, VerificationStepActivity.class);
+                intent.putExtra("from", FROM);
+                intent.putExtra("type", "ForgotPasswordActivity");
+                intent.putExtra("userid", "");
+                intent.putExtra("auth", "");
+                intent.putExtra("verified", false);
+                intent.putExtra("email", email.getText().toString());
+                startActivityForResult(intent, GO_TO_SIGNIN);
+              } else {
+                Toast.makeText(ForgotPasswordActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+              }
+            }
+          });
+        });
   }
 
   @Override

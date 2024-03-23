@@ -18,17 +18,17 @@ import io.realm.RealmList;
 import io.realm.RealmObject;
 
 public class ComprehensionCorrectAnswers extends RealmObject {
-  private RealmList<CorrectAnswerString> answer;
+  private RealmList<String> answer;
 
   private String key;
 
   private String evaluation;
 
-  public RealmList<CorrectAnswerString> getAnswer() {
+  public RealmList<String> getAnswer() {
     return answer;
   }
 
-  public void setAnswer(RealmList<CorrectAnswerString> answer) {
+  public void setAnswer(RealmList<String> answer) {
     this.answer = answer;
   }
 

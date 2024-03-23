@@ -27,6 +27,7 @@ import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Base64;
+import android.util.Log;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
@@ -36,6 +37,7 @@ import androidx.appcompat.widget.AppCompatTextView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.FileProvider;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.events.ConsentPdfEvent;
 import com.harvard.studyappmodule.studymodel.ConsentPDF;
@@ -48,7 +50,11 @@ import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.PdfViewerView;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.ConsentDataStoreInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantConsentDatastoreConfigEvent;
+
 import io.realm.Realm;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -72,6 +78,8 @@ public class PdfDisplayActivity extends AppCompatActivity
   private CustomFirebaseAnalytics analyticsInstance;
   private NetworkChangeReceiver networkChangeReceiver;
   RelativeLayout shareBtn;
+  private ConsentDataStoreInterface consentDataStoreInterface;
+  private ConsentPDF consentPdfData;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -91,11 +99,28 @@ public class PdfDisplayActivity extends AppCompatActivity
     studyId = getIntent().getStringExtra("studyId");
     title = getIntent().getStringExtra("title");
     dataShare = getIntent().getStringExtra("datasharingscreen");
+    ConsentPdfData studies = db.getPdfPath(studyId, realm);
     if (dataShare != null && dataShare.equalsIgnoreCase("datasharingscreen")) {
       titletxt.setText(getResources().getString(R.string.data_sharing));
-      callGetConsentPdfWebservice();
+      try {
+        if (studies == null) {
+          callGetConsentPdfWebservice();
+        } else {
+          File file = new File(studies.getDataSharingImage().toString());
+          if (file.exists()) {
+            CipherInputStream cis =
+                AppController.generateDecryptedConsentPdf(studies.getDataSharingImage().toString());
+            // we will get byte array pass to pdf view
+            bytesArray = AppController.cipherInputStreamConvertToByte(cis);
+            setPdfView(bytesArray, file.getName());
+          } else {
+            callGetConsentPdfWebservice();
+          }
+        }
+      } catch (Exception e) {
+        Logger.log(e);
+      }
     } else {
-      ConsentPdfData studies = db.getPdfPath(studyId, realm);
       try {
         if (studies == null) {
           callGetConsentPdfWebservice();
@@ -141,25 +166,55 @@ public class PdfDisplayActivity extends AppCompatActivity
             analyticsInstance.logEvent(
                 CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
             // checking the permissions
-            if ((ActivityCompat.checkSelfPermission(
-                        PdfDisplayActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED)
-                || (ActivityCompat.checkSelfPermission(
-                        PdfDisplayActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED)) {
-              String[] permission =
-                  new String[] {
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                  };
-              if (!hasPermissions(permission)) {
-                // just checking is it already denied?
-                Toast.makeText(
-                        PdfDisplayActivity.this,
-                        getResources().getString(R.string.permission_enable_message),
-                        Toast.LENGTH_LONG)
-                    .show();
+            if(Build.VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+              if((ActivityCompat.checkSelfPermission(
+                  PdfDisplayActivity.this,Manifest.permission.READ_MEDIA_AUDIO)
+                  != PackageManager.PERMISSION_GRANTED)
+                  || (ActivityCompat.checkSelfPermission(
+                  PdfDisplayActivity.this,Manifest.permission.READ_MEDIA_IMAGES)
+                  != PackageManager.PERMISSION_GRANTED)
+                  || (ActivityCompat.checkSelfPermission(
+                  PdfDisplayActivity.this,Manifest.permission.READ_MEDIA_VIDEO)
+                  != PackageManager.PERMISSION_GRANTED)) {
+                String[] permission =
+                    new String[]{
+                        Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_IMAGES,
+                        Manifest.permission.READ_MEDIA_VIDEO
+                    };
+                if (!hasPermissions(permission)) {
+                  ActivityCompat.requestPermissions(
+                      (Activity) PdfDisplayActivity.this, permission, PERMISSION_REQUEST_CODE);
+                } else {
+                  // sharing pdf creating
+                  sharePdf();
+                }
               } else {
+                sharePdf();
+              }
+            } else if(Build.VERSION.SDK_INT < VERSION_CODES.TIRAMISU) {
+              if ((ActivityCompat.checkSelfPermission(
+                  PdfDisplayActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                  != PackageManager.PERMISSION_GRANTED)
+                  || (ActivityCompat.checkSelfPermission(
+                  PdfDisplayActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                  != PackageManager.PERMISSION_GRANTED)) {
+                String[] permission =
+                    new String[]{
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    };
+                if (!hasPermissions(permission)) {
+                  // just checking is it already denied?
+                  Toast.makeText(
+                          PdfDisplayActivity.this,
+                          getResources().getString(R.string.permission_enable_message),
+                          Toast.LENGTH_LONG)
+                      .show();
+                } else {
+                  sharePdf();
+                }
+              }
+              else{
                 sharePdf();
               }
             } else {
@@ -202,7 +257,7 @@ public class PdfDisplayActivity extends AppCompatActivity
         "userId",
         AppController.getHelperSharedPreference()
             .readPreference(this, getResources().getString(R.string.userid), ""));
-    String url = Urls.CONSENTPDF + "?studyId=" + studyId + "&consentVersion=";
+   /* String url = Urls.CONSENTPDF + "?studyId=" + studyId + "&consentVersion=";
     ParticipantConsentDatastoreConfigEvent participantConsentDatastoreConfigEvent =
         new ParticipantConsentDatastoreConfigEvent(
             "get",
@@ -216,10 +271,117 @@ public class PdfDisplayActivity extends AppCompatActivity
             false,
             PdfDisplayActivity.this);
     ConsentPdfEvent consentPdfEvent = new ConsentPdfEvent();
-    consentPdfEvent.setParticipantConsentDatastoreConfigEvent(
-        participantConsentDatastoreConfigEvent);
+    consentPdfEvent.setParticipantConsentDatastoreConfigEvent(participantConsentDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performConsentPdf(consentPdfEvent);
+    userModulePresenter.performConsentPdf(consentPdfEvent);*/
+    consentPdfApiCall(header,studyId,"");
+
+  }
+
+  private void consentPdfApiCall(HashMap<String, String> header, String studyId, String s) {
+    consentDataStoreInterface = new ServiceManager().createService(ConsentDataStoreInterface.class, UrlTypeConstants.ConsentDataStore);
+    NetworkRequest.performAsyncRequest(consentDataStoreInterface.getConsentDocument(header,studyId,""),
+        (dataResponse) -> {
+          try {
+            getConsentDocument(dataResponse);
+          } catch (Exception e) {
+            Log.e("TAG", e.getMessage());
+          }
+
+        }, (error) -> {
+          setErrorResponse(error,header,studyId,s);
+        });
+  }
+
+  private void setErrorResponse(Throwable error, HashMap<String, String> header, String studyId, String s) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        int statusCode = AppController.getErrorCode(error);
+        String  errormsg = AppController.getErrorMessage(error);
+        if (statusCode == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+          AppController.checkRefreshToken(PdfDisplayActivity.this, new AppController.RefreshTokenListener() {
+            @Override
+            public void onRefreshTokenCompleted(String result) {
+              if (result.equalsIgnoreCase("sucess")) {
+                header.put(
+                    "Authorization",
+                    "Bearer "
+                        + AppController.getHelperSharedPreference()
+                        .readPreference(PdfDisplayActivity.this, getResources().getString(R.string.auth), ""));
+                consentPdfApiCall(header,studyId,s);
+              } else {
+                AppController.getHelperProgressDialog().dismissDialog();
+                Toast.makeText(PdfDisplayActivity.this, "session expired", Toast.LENGTH_LONG).show();
+                AppController.getHelperSessionExpired(PdfDisplayActivity.this, "");
+              }
+            }
+          }, UrlTypeConstants.ConsentDataStore);
+        } else {
+          AppController.getHelperProgressDialog().dismissDialog();
+          try {
+            ConsentPDF consentPdfData = db.getConsentPdf(studyId, realm);
+            if (consentPdfData != null) {
+              if (dataShare != null && dataShare.equalsIgnoreCase("datasharingscreen")) {
+                try {
+                  bytesArray = Base64.decode(consentPdfData.getDataSharingScreenShot(), Base64.DEFAULT);
+                } catch (Exception e) {
+                  Logger.log(e);
+                }
+              } else {
+                try {
+                  bytesArray = Base64.decode(consentPdfData.getConsent().getContent(), Base64.DEFAULT);
+                } catch (Exception e) {
+                  Logger.log(e);
+                }
+              }
+              setPdfView(bytesArray, consentPdfData.getStudyId());
+            } else {
+              Toast.makeText(PdfDisplayActivity.this, "No data available", Toast.LENGTH_SHORT).show();
+            }
+          } catch (Exception e) {
+            Toast.makeText(PdfDisplayActivity.this, "No data available", Toast.LENGTH_SHORT).show();
+            Logger.log(e);
+          }
+        }
+      }});
+  }
+
+  private void getConsentDocument(ConsentPDF dataResponse) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          AppController.getHelperProgressDialog().dismissDialog();
+          consentPdfData = dataResponse;
+          if (consentPdfData != null) {
+            if (dataShare != null && dataShare.equalsIgnoreCase("datasharingscreen")) {
+              try {
+                bytesArray = Base64.decode(consentPdfData.getDataSharingScreenShot(), Base64.DEFAULT);
+              } catch (Exception e) {
+                Logger.log(e);
+              }
+            } else {
+              try {
+                bytesArray = Base64.decode(consentPdfData.getConsent().getContent(), Base64.DEFAULT);
+              } catch (Exception e) {
+                Logger.log(e);
+              }
+            }
+            setPdfView(bytesArray, consentPdfData.getStudyId());
+            if (dataShare == null) {
+              try {
+                consentPdfData.setStudyId(studyId);
+                db.saveConsentPdf(PdfDisplayActivity.this, consentPdfData);
+              } catch (Exception e) {
+                Logger.log(e);
+              }
+            }
+          }
+        } catch (Exception e) {
+          Logger.log(e);
+        }
+      }});
   }
 
   private void setPdfView(byte[] bytesArray, String name) {
@@ -231,20 +393,52 @@ public class PdfDisplayActivity extends AppCompatActivity
 
   private void pdfWritingPermission() {
     // checking the permissions
-    if ((ActivityCompat.checkSelfPermission(
-                PdfDisplayActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)
-        || (ActivityCompat.checkSelfPermission(
-                PdfDisplayActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)) {
-      String[] permission =
-          new String[] {
-            Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
-          };
-      if (!hasPermissions(permission)) {
-        ActivityCompat.requestPermissions(
-            (Activity) PdfDisplayActivity.this, permission, PERMISSION_REQUEST_CODE);
+    if(Build.VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+      if((ActivityCompat.checkSelfPermission(
+          PdfDisplayActivity.this,Manifest.permission.READ_MEDIA_AUDIO)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          PdfDisplayActivity.this,Manifest.permission.READ_MEDIA_IMAGES)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          PdfDisplayActivity.this,Manifest.permission.READ_MEDIA_VIDEO)
+          != PackageManager.PERMISSION_GRANTED)) {
+        String[] permission =
+            new String[]{
+                Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            };
+        if (!hasPermissions(permission)) {
+          ActivityCompat.requestPermissions(
+              (Activity) PdfDisplayActivity.this, permission, PERMISSION_REQUEST_CODE);
+        } else {
+          // sharing pdf creating
+          sharePdfCreation();
+        }
       } else {
+        sharePdfCreation();
+      }
+    }
+    else if(Build.VERSION.SDK_INT < VERSION_CODES.TIRAMISU) {
+      if ((ActivityCompat.checkSelfPermission(
+          PdfDisplayActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          PdfDisplayActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+          != PackageManager.PERMISSION_GRANTED)) {
+        String[] permission =
+            new String[]{
+                Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
+            };
+        if (!hasPermissions(permission)) {
+          ActivityCompat.requestPermissions(
+              (Activity) PdfDisplayActivity.this, permission, PERMISSION_REQUEST_CODE);
+        } else {
+          // sharing pdf creating
+          sharePdfCreation();
+        }
+      }
+      else {
         // sharing pdf creating
         sharePdfCreation();
       }
@@ -269,14 +463,15 @@ public class PdfDisplayActivity extends AppCompatActivity
   @Override
   public void onRequestPermissionsResult(
       int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     switch (requestCode) {
       case PERMISSION_REQUEST_CODE:
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_DENIED) {
           Toast.makeText(
-                  PdfDisplayActivity.this,
-                  getResources().getString(R.string.permission_enable_message),
-                  Toast.LENGTH_LONG)
-              .show();
+                          PdfDisplayActivity.this,
+                          getResources().getString(R.string.permission_enable_message),
+                          Toast.LENGTH_LONG)
+                  .show();
         } else {
           sharePdfCreation();
         }
@@ -371,11 +566,18 @@ public class PdfDisplayActivity extends AppCompatActivity
       try {
         ConsentPDF consentPdfData = db.getConsentPdf(studyId, realm);
         if (consentPdfData != null) {
-
-          try {
-            bytesArray = Base64.decode(consentPdfData.getConsent().getContent(), Base64.DEFAULT);
-          } catch (Exception e) {
-            Logger.log(e);
+          if (dataShare != null && dataShare.equalsIgnoreCase("datasharingscreen")) {
+            try {
+              bytesArray = Base64.decode(consentPdfData.getDataSharingScreenShot(), Base64.DEFAULT);
+            } catch (Exception e) {
+              Logger.log(e);
+            }
+          } else {
+            try {
+              bytesArray = Base64.decode(consentPdfData.getConsent().getContent(), Base64.DEFAULT);
+            } catch (Exception e) {
+              Logger.log(e);
+            }
           }
           setPdfView(bytesArray, consentPdfData.getStudyId());
         } else {

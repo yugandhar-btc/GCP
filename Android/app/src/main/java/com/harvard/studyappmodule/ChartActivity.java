@@ -512,21 +512,50 @@ public class ChartActivity extends AppCompatActivity
 
   private void screenshotWritingPermission() {
     // checking the permissions
-    if ((ActivityCompat.checkSelfPermission(
-                ChartActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)
-        || (ActivityCompat.checkSelfPermission(
-                ChartActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)) {
-      String[] permission =
-          new String[] {
-            Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
-          };
-      if (!hasPermissions(permission)) {
-        ActivityCompat.requestPermissions(
-            (Activity) ChartActivity.this, permission, PERMISSION_REQUEST_CODE);
+    if(Build.VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+      if((ActivityCompat.checkSelfPermission(
+          ChartActivity.this,Manifest.permission.READ_MEDIA_AUDIO)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          ChartActivity.this,Manifest.permission.READ_MEDIA_IMAGES)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          ChartActivity.this,Manifest.permission.READ_MEDIA_VIDEO)
+          != PackageManager.PERMISSION_GRANTED)) {
+        String[] permission =
+            new String[]{
+                Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            };
+        if (!hasPermissions(permission)) {
+          ActivityCompat.requestPermissions(
+              (Activity) ChartActivity.this, permission, PERMISSION_REQUEST_CODE);
+        } else {
+          // sharing pdf creating
+          shareFunctionality();
+        }
       } else {
-        // sharing pdf creating
+        shareFunctionality();
+      }
+    } else if(Build.VERSION.SDK_INT < VERSION_CODES.TIRAMISU) {
+      if ((ActivityCompat.checkSelfPermission(
+          ChartActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
+          != PackageManager.PERMISSION_GRANTED)
+          || (ActivityCompat.checkSelfPermission(
+          ChartActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+          != PackageManager.PERMISSION_GRANTED)) {
+        String[] permission =
+            new String[]{
+                Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
+            };
+        if (!hasPermissions(permission)) {
+          ActivityCompat.requestPermissions(
+              (Activity) ChartActivity.this, permission, PERMISSION_REQUEST_CODE);
+        } else {
+          // sharing pdf creating
+          shareFunctionality();
+        }
+      }else {
         shareFunctionality();
       }
     } else {
@@ -550,14 +579,15 @@ public class ChartActivity extends AppCompatActivity
   @Override
   public void onRequestPermissionsResult(
       int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     switch (requestCode) {
       case PERMISSION_REQUEST_CODE:
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_DENIED) {
           Toast.makeText(
-                  ChartActivity.this,
-                  getResources().getString(R.string.permission_enable_message_screenshot),
-                  Toast.LENGTH_LONG)
-              .show();
+                          ChartActivity.this,
+                          getResources().getString(R.string.permission_enable_message_screenshot),
+                          Toast.LENGTH_LONG)
+                  .show();
         } else {
           shareFunctionality();
         }

@@ -16,16 +16,21 @@
 package com.harvard.studyappmodule.activitybuilder;
 
 import android.content.Context;
+import android.util.Log;
+
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.activitybuilder.model.servicemodel.ActivityObj;
 import com.harvard.studyappmodule.activitybuilder.model.servicemodel.Steps;
 import com.harvard.studyappmodule.custom.result.StepRecordCustom;
 import com.harvard.utils.AppController;
 import com.harvard.utils.Logger;
+
 import io.realm.Realm;
 import io.realm.RealmList;
+
 import java.util.List;
 import java.util.Map;
+
 import org.researchstack.backbone.result.StepResult;
 import org.researchstack.backbone.result.TaskResult;
 import org.researchstack.backbone.step.Step;
@@ -35,9 +40,13 @@ public class ActivityBuilder extends OrderedTask {
 
   private static boolean branching;
   private static DbServiceSubscriber dbServiceSubscriber;
-  private static String identifier;
+  private static String identifiers;
   private static RealmList<Steps> activityQuestionStep;
   private static Context context;
+  private static final String IMAGE = "imageChoice";
+  private static final String TEXTCHOICE = "textChoice";
+  private static final String TIMEINTERVAL = "timeInterval";
+
 
   private ActivityBuilder(String identifier, List<Step> steps) {
     super(identifier, steps);
@@ -50,7 +59,7 @@ public class ActivityBuilder extends OrderedTask {
       ActivityObj activityParam,
       boolean branchingObj,
       DbServiceSubscriber dbServiceSubscriberParam) {
-    identifier = identifierParam;
+    identifiers = identifierParam;
     activityQuestionStep = activityParam.getSteps();
     branching = branchingObj;
     dbServiceSubscriber = dbServiceSubscriberParam;
@@ -74,8 +83,8 @@ public class ActivityBuilder extends OrderedTask {
       }
 
       if (stepsData.getResultType().equalsIgnoreCase("textScale")
-          || stepsData.getResultType().equalsIgnoreCase("imageChoice")
-          || stepsData.getResultType().equalsIgnoreCase("textChoice")
+          || stepsData.getResultType().equalsIgnoreCase(IMAGE)
+          || stepsData.getResultType().equalsIgnoreCase(TEXTCHOICE)
           || stepsData.getResultType().equalsIgnoreCase("boolean")) {
 
         if (stepsData != null
@@ -109,7 +118,13 @@ public class ActivityBuilder extends OrderedTask {
               return steps.get(k);
             }
           }
-
+          for (int i = 0; i < activityQuestionStep.size(); i++) {
+            for (int j = 0; j < activityQuestionStep.get(i).getDestinations().size(); j++) {
+              if (activityQuestionStep.get(i).getDestinations().get(j).getDestination().equalsIgnoreCase(destination)) {
+                Log.e("check", "get type here is " + activityQuestionStep.get(i).getDestinations().get(j));
+              }
+            }
+          }
           // if destination doesn't satisfy
           if (previousStep == null) {
             return steps.get(0);
@@ -128,7 +143,7 @@ public class ActivityBuilder extends OrderedTask {
       } else if (stepsData.getResultType().equalsIgnoreCase("scale")
           || stepsData.getResultType().equalsIgnoreCase("continuousScale")
           || stepsData.getResultType().equalsIgnoreCase("numeric")
-          || stepsData.getResultType().equalsIgnoreCase("timeInterval")
+          || stepsData.getResultType().equalsIgnoreCase(TIMEINTERVAL)
           || stepsData.getResultType().equalsIgnoreCase("height")) {
         if (stepsData != null
             && stepsData.getDestinations().size() == 1
@@ -158,7 +173,7 @@ public class ActivityBuilder extends OrderedTask {
             } else if (!stepsData.getDestinations().get(j).getCondition().equalsIgnoreCase("")) {
               double condition =
                   Double.parseDouble(stepsData.getDestinations().get(j).getCondition());
-              if (stepsData.getResultType().equalsIgnoreCase("timeInterval")) {
+              if (stepsData.getResultType().equalsIgnoreCase(TIMEINTERVAL)) {
                 condition =
                     Double.parseDouble(stepsData.getDestinations().get(j).getCondition()) / 3600d;
               }
@@ -166,6 +181,7 @@ public class ActivityBuilder extends OrderedTask {
               destination = getDestination(condition, answerDouble, stepsData, j, destination);
             }
           }
+
           for (int k = 0; k < steps.size(); k++) {
             if (steps.get(k).getIdentifier().equalsIgnoreCase(destination)) {
               return steps.get(k);
@@ -257,10 +273,9 @@ public class ActivityBuilder extends OrderedTask {
       if (answerDouble <= condition) {
         destination = stepsData.getDestinations().get(j).getDestination();
       }
-    } else if (stepsData.getDestinations().get(j).getOperator().equalsIgnoreCase("ne")) {
-      if (answerDouble != condition) {
-        destination = stepsData.getDestinations().get(j).getDestination();
-      }
+    } else if (stepsData.getDestinations().get(j).getOperator().equalsIgnoreCase("ne")
+        && answerDouble != condition) {
+      destination = stepsData.getDestinations().get(j).getDestination();
     }
     return destination;
   }
@@ -268,7 +283,7 @@ public class ActivityBuilder extends OrderedTask {
   private String getAnswer(Map.Entry<String, StepResult> pair) {
     String answer = "";
     try {
-      StepResult stepResult = pair.getValue();
+      StepResult<Object> stepResult = pair.getValue();
       Object o = stepResult.getResults().get("answer");
       if (o instanceof Object[]) {
         Object[] objects = (Object[]) o;
@@ -284,7 +299,7 @@ public class ActivityBuilder extends OrderedTask {
       answer = "";
       Logger.log(e);
     }
-    if (answer == null || answer.equalsIgnoreCase("null")) {
+    if (answer.equalsIgnoreCase("null")) {
       answer = "";
     }
     return answer;
@@ -296,20 +311,19 @@ public class ActivityBuilder extends OrderedTask {
     for (Map.Entry<String, StepResult> pair : map.entrySet()) {
       if (pair.getKey().equalsIgnoreCase(stepsData.getKey())) {
         answer = getAnswer(pair);
-        if (!answer.equalsIgnoreCase("")) {
-          if (stepsData.getResultType().equalsIgnoreCase("imageChoice")
-              || stepsData.getResultType().equalsIgnoreCase("textChoice")) {
-            Realm realm = AppController.getRealmobj(context);
-            StepRecordCustom stepRecordCustom =
-                dbServiceSubscriber.getResultFromDB(identifier + "_" + pair.getKey(), realm);
-            for (int j = 0; j < stepRecordCustom.getTextChoices().size(); j++) {
-              if (stepRecordCustom.getTextChoices().get(j).getValue().equalsIgnoreCase(answer)) {
-                answer = stepRecordCustom.getTextChoices().get(j).getText();
-                break;
-              }
+        if (!answer.equalsIgnoreCase("") &&
+            stepsData.getResultType().equalsIgnoreCase(IMAGE)
+            || stepsData.getResultType().equalsIgnoreCase(TEXTCHOICE)) {
+          Realm realm = AppController.getRealmobj(context);
+          StepRecordCustom stepRecordCustom =
+              dbServiceSubscriber.getResultFromDB(identifiers + "_" + pair.getKey(), realm);
+          for (int j = 0; j < stepRecordCustom.getTextChoices().size(); j++) {
+            if (stepRecordCustom.getTextChoices().get(j).getValue().equalsIgnoreCase(answer)) {
+              answer = stepRecordCustom.getTextChoices().get(j).getText();
+              break;
             }
-            dbServiceSubscriber.closeRealmObj(realm);
           }
+          dbServiceSubscriber.closeRealmObj(realm);
         }
         break;
       }
@@ -339,6 +353,8 @@ public class ActivityBuilder extends OrderedTask {
   @Override
   public Step getStepBeforeStep(Step step, TaskResult taskResult) {
 
+    taskResult.getResults().remove(step.getIdentifier());
+    dbServiceSubscriber.deleteStepRecord(context, step.getIdentifier());
     if (branching) {
       String identifier = "";
       for (int i = 0; i < activityQuestionStep.size(); i++) {
@@ -353,48 +369,53 @@ public class ActivityBuilder extends OrderedTask {
             for (Map.Entry<String, StepResult> pair : map.entrySet()) {
               if (pair.getKey().equalsIgnoreCase(activityQuestionStep.get(i).getKey())) {
                 if (activityQuestionStep.get(i).getResultType().equalsIgnoreCase("textScale")
-                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("imageChoice")
-                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("textChoice")
-                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("boolean")) {
+                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase(IMAGE)
+                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase(TEXTCHOICE)
+                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("boolean")
+                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("grouped")
+                        || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("date")) {
                   try {
                     if (pair.getValue() != null) {
                       String answer = getAnswer(pair);
-                      if (!answer.equalsIgnoreCase("")) {
-                        if (activityQuestionStep
-                            .get(i)
-                            .getResultType()
-                            .equalsIgnoreCase("imageChoice")
-                            || activityQuestionStep
-                            .get(i)
-                            .getResultType()
-                            .equalsIgnoreCase("textChoice")) {
-                          Realm realm = AppController.getRealmobj(context);
-                          StepRecordCustom stepRecordCustom =
-                              dbServiceSubscriber.getResultFromDB(
-                                  identifier + "_" + activityQuestionStep.get(i).getKey(), realm);
-                          for (int j = 0; j < stepRecordCustom.getTextChoices().size(); j++) {
-                            if (stepRecordCustom
-                                .getTextChoices()
-                                .get(j)
-                                .getValue()
-                                .equalsIgnoreCase(answer)) {
-                              answer = stepRecordCustom.getTextChoices().get(j).getText();
-                              break;
-                            }
+                      if (!answer.equalsIgnoreCase("") && activityQuestionStep
+                          .get(i)
+                          .getResultType()
+                          .equalsIgnoreCase(IMAGE)
+                          || activityQuestionStep
+                          .get(i)
+                          .getResultType()
+                          .equalsIgnoreCase(TEXTCHOICE)) {
+                        Realm realm = AppController.getRealmobj(context);
+                        StepRecordCustom stepRecordCustom =
+                            dbServiceSubscriber.getResultFromDB(
+                                    identifiers + "_" + activityQuestionStep.get(i).getKey(), realm);
+                        for (int j = 0; j < stepRecordCustom.getTextChoices().size(); j++) {
+                          if (stepRecordCustom
+                              .getTextChoices()
+                              .get(j)
+                              .getValue()
+                              .equalsIgnoreCase(answer)) {
+                            answer = stepRecordCustom.getTextChoices().get(j).getText();
+                            break;
                           }
-                          dbServiceSubscriber.closeRealmObj(realm);
                         }
+                        dbServiceSubscriber.closeRealmObj(realm);
                       }
+                     
                       if (activityQuestionStep
                           .get(i)
                           .getDestinations()
                           .get(k)
                           .getCondition()
-                          .equalsIgnoreCase(answer)) {
+                          .equalsIgnoreCase(answer) || activityQuestionStep
+                              .get(i)
+                              .getResultType()
+                              .equalsIgnoreCase("date")) {
                         identifier = activityQuestionStep.get(i).getKey();
                       }
                     }
-                  } catch (Exception e) {
+                  }
+                  catch (Exception e) {
                     Logger.log(e);
                     int nextIndex = steps.indexOf(step) - 1;
 
@@ -402,26 +423,31 @@ public class ActivityBuilder extends OrderedTask {
                       return steps.get(nextIndex);
                     }
                   }
-                } else if (activityQuestionStep.get(i).getResultType().equalsIgnoreCase("scale")
-                    || activityQuestionStep
-                    .get(i)
-                    .getResultType()
-                    .equalsIgnoreCase("continuousScale")
+                }
+                else if (activityQuestionStep.get(i).getResultType().equalsIgnoreCase("scale")
+                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("continuousScale")
                     || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("numeric")
-                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("timeInterval")
-                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("height")) {
+                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase(TIMEINTERVAL)
+                    || activityQuestionStep.get(i).getResultType().equalsIgnoreCase("height")
+                        ) {
                   try {
                     if (pair.getValue() != null) {
                       String answer = getAnswer(pair);
                       identifier = getidentifier(answer, activityQuestionStep, i, k);
                     }
-                  } catch (Exception e) {
+                  }
+                  catch (Exception e) {
                     Logger.log(e);
                     int nextIndex = steps.indexOf(step) - 1;
 
                     if (nextIndex >= 0) {
                       return steps.get(nextIndex);
                     }
+                  }
+                }
+                else if (activityQuestionStep.get(i).getResultType().equalsIgnoreCase("")) {
+                  if (activityQuestionStep.get(i).getType().equalsIgnoreCase("instruction")) {
+                    identifier = activityQuestionStep.get(i).getKey();
                   }
                 }
               }
@@ -523,10 +549,8 @@ public class ActivityBuilder extends OrderedTask {
           .getDestinations()
           .get(k)
           .getOperator()
-          .equalsIgnoreCase("ne")) {
-        if (answerDouble != condition) {
-          identifier = activityQuestionStep.get(i).getKey();
-        }
+          .equalsIgnoreCase("ne") && answerDouble != condition) {
+        identifier = activityQuestionStep.get(i).getKey();
       }
     }
     return identifier;

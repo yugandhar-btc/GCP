@@ -160,7 +160,7 @@
     <string name="resend_success">A verification code has been sent to your registered email</string>
     <string name="consentthanksmsg">Consent confirmed</string>
     <string name="studystartmsg">You can now start using the app to participate in the study.</string>
-    <string name="viewpdf">View/email eConsent PDF</string>
+    <string name="viewpdf">View/email PDF</string>
     <string name="eligibility">ELIGIBILITY</string>
     <string name="why_register">Why register?</string>
     <string name="sign_out_message">Are you sure you want to sign out?</string>
@@ -336,7 +336,7 @@
     <string name="permission_enable_message">Please enable sharing permission from phone settings to continue.</string>
     <string name="leave_study_retained_message">Are you sure? Tap OK to confirm.</string>
     <string name="leave_study_deleted_message">Are you sure? Tap OK to confirm.</string>
-    <string name="leave_study_retained_or_deleted_message">You are choosing to leave the study. Please choose if your response data can be retained and used for research purposes OR if your response data should be deleted.</string>
+    <string name="leave_study_retained_or_deleted_message">You are choosing to leave the study. Please choose if your response data can be retained and used for research purposes or if your responses should be deleted.</string>
     <string name="consent_complete">Please complete consent to continue</string>
     <string name="studyPaused">This study is paused.</string>
     <string name="studyClosed">This study is closed.</string>
@@ -483,7 +483,7 @@
     <string name="activetaskremindertxt">Reminder: The fetal kick recording activity is in progress. Please update the app with the count of the kicks or movements you experience in this period.. </string>
     <string name="notificatinturnoffnotification">Stay up-to-date! Turn ON notifications and reminders in app and phone settings to get notified about study activities in a timely manner.</string>
     <string name="consentConfirmation">By tapping on Agree, you confirm that you have reviewed the consent document and agree to participate in the study.</string>
-    <string name="leaveStudy">Are you sure you want to leave the study?</string>
+    <string name="leaveStudy">You have chosen to withdraw from the study. By selecting \'Yes\' you will be withdrawn and will not be able to rejoin the study. The benefits of completing the study will be adjusted or eliminated based on the study protocol. Thanks for participating.</string>
     <string name="leaveStudyDeleteAccount">Are you sure you want to leave the study?\nThis will also delete your app account.</string>
     <string name="app_standalone">Standalone</string>
     <string name="app_gateway">Gateway</string>

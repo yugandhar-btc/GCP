@@ -15,7 +15,7 @@
         android:visibility="invisible"/>
 
 
-    <TextView
+    <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/consentcomplete"
         style="@style/TextType1"
         android:layout_above="@id/mCenterView"
@@ -26,7 +26,7 @@
         android:textColor="@color/colorPrimaryBlack"/>
 
 
-    <TextView
+    <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/mTextSecRow"
         style="@style/TextType2"
         android:layout_below="@+id/mCenterView"
@@ -43,7 +43,7 @@
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true">
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/viewpdf"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -53,7 +53,7 @@
             android:textColor="@color/colorPrimaryBlack"
             android:visibility="visible"/>
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/next"
             style="@style/TextType2"
             android:layout_width="wrap_content"

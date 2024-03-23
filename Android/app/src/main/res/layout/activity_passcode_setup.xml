@@ -14,7 +14,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/setup_info"
             style="@style/signUpTextField"
             android:layout_width="wrap_content"
@@ -40,7 +40,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <ImageView
+                <androidx.appcompat.widget.AppCompatImageView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center"
@@ -48,7 +48,7 @@
                     android:background="@mipmap/ic_launcher"
                     android:gravity="center" />
 
-                <TextView
+                <androidx.appcompat.widget.AppCompatTextView
                     android:id="@+id/passcodetitle"
                     style="@style/signUpTextField"
                     android:layout_width="wrap_content"
@@ -59,7 +59,7 @@
                     android:text="@string/enter_passcode"
                     android:textSize="15sp" />
 
-                <TextView
+                <androidx.appcompat.widget.AppCompatTextView
                     android:id="@+id/passcodedesc"
                     style="@style/signUpTextField"
                     android:layout_width="wrap_content"
@@ -82,7 +82,7 @@
                 passcodeView:digitRadius="@dimen/radius"
                 passcodeView:numDigits="4" />
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/forgot"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

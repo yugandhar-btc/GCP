@@ -105,9 +105,9 @@ public class IntegerUnitQuestionBody implements StepBody {
     if (step.getPlaceholder() != null) {
       editText.setHint(step.getPlaceholder());
     } else if (maxValue == Integer.MAX_VALUE) {
-      editText.setHint(context.getString(R.string.rsb_hint_step_body_int_no_max));
+      editText.setHint(context.getString(org.researchstack.backbone.R.string.rsb_hint_step_body_int_no_max));
     } else {
-      editText.setHint(context.getString(R.string.rsb_hint_step_body_int, minValue, maxValue));
+      editText.setHint(context.getString(org.researchstack.backbone.R.string.rsb_hint_step_body_int, minValue, maxValue));
     }
 
     editText.setInputType(EditorInfo.TYPE_NUMBER_FLAG_SIGNED | EditorInfo.TYPE_CLASS_NUMBER);

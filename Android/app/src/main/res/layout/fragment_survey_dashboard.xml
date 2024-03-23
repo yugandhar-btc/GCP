@@ -13,8 +13,7 @@
         android:background="@color/colorPrimary"
         android:clickable="false"
         android:padding="18dp"
-        app:contentInsetLeft="0dp"
-        app:contentInsetStart="0dp"
+        app:contentInsetEnd="15dp"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light">
 
         <RelativeLayout

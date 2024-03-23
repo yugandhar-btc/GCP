@@ -19,15 +19,19 @@ import android.app.Activity;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatEditText;
 import androidx.appcompat.widget.AppCompatTextView;
+
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.studyappmodule.events.ContactUsEvent;
 import com.harvard.studyappmodule.studymodel.ReachOut;
 import com.harvard.utils.AppController;
@@ -36,165 +40,170 @@ import com.harvard.utils.Logger;
 import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
+
 import java.util.HashMap;
 
 public class ContactUsActivity extends AppCompatActivity implements ApiCall.OnAsyncRequestComplete,
-    NetworkChangeReceiver.NetworkChangeCallback {
+        NetworkChangeReceiver.NetworkChangeCallback {
 
-  private RelativeLayout backBtn;
-  private AppCompatTextView title;
-  private AppCompatTextView firstNameText;
-  private AppCompatTextView emailText;
-  private AppCompatTextView subjectText;
-  private AppCompatTextView messageText;
-  private AppCompatEditText email;
-  private AppCompatEditText subject;
-  private AppCompatEditText message;
-  private AppCompatEditText firstName;
-  private static final int CONTACT_US = 15;
-  private AppCompatTextView submitButton;
-  private CustomFirebaseAnalytics analyticsInstance;
-  private TextView offlineIndicatior;
-  private NetworkChangeReceiver networkChangeReceiver;
+    private RelativeLayout backBtn;
+    private AppCompatTextView title;
+    private AppCompatTextView firstNameText;
+    private AppCompatTextView emailText;
+    private AppCompatTextView subjectText;
+    private AppCompatTextView messageText;
+    private AppCompatEditText email;
+    private AppCompatEditText subject;
+    private AppCompatEditText message;
+    private AppCompatEditText firstName;
+    private static final int CONTACT_US = 15;
+    private AppCompatTextView submitButton;
+    private CustomFirebaseAnalytics analyticsInstance;
+    private TextView offlineIndicatior;
+    private NetworkChangeReceiver networkChangeReceiver;
+    private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
 
-  @Override
-  protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    setContentView(R.layout.activity_contact_us);
-    analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
-    networkChangeReceiver = new NetworkChangeReceiver(this);
-    initializeXmlId();
-    setFont();
-    bindEvents();
-    email.setText(
-        ""
-            + AppController.getHelperSharedPreference()
-                .readPreference(this, getString(R.string.email), ""));
-  }
-
-  private void initializeXmlId() {
-    backBtn = (RelativeLayout) findViewById(R.id.backBtn);
-
-    title = (AppCompatTextView) findViewById(R.id.title);
-    firstNameText = (AppCompatTextView) findViewById(R.id.firstName);
-    emailText = (AppCompatTextView) findViewById(R.id.email_label);
-    subjectText = (AppCompatTextView) findViewById(R.id.subject_label);
-    messageText = (AppCompatTextView) findViewById(R.id.message_label);
-
-    firstName = (AppCompatEditText) findViewById(R.id.edittxt_firstName);
-    email = (AppCompatEditText) findViewById(R.id.edittxt_email);
-    subject = (AppCompatEditText) findViewById(R.id.edittxt_subject);
-    message = (AppCompatEditText) findViewById(R.id.edittxt_message);
-
-    submitButton = (AppCompatTextView) findViewById(R.id.submitButton);
-    offlineIndicatior = findViewById(R.id.offlineIndicatior);
-  }
-
-  private void setFont() {
-    try {
-      title.setTypeface(AppController.getTypeface(ContactUsActivity.this, "medium"));
-      firstNameText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-      emailText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-      subjectText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-      messageText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-
-      firstName.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-      email.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-      subject.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-      message.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
-
-    } catch (Exception e) {
-      Logger.log(e);
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_contact_us);
+        analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
+        networkChangeReceiver = new NetworkChangeReceiver(this);
+        initializeXmlId();
+        setFont();
+        bindEvents();
+        email.setText(
+                ""
+                        + AppController.getHelperSharedPreference()
+                        .readPreference(this, getString(R.string.email), ""));
     }
-  }
 
-  private void bindEvents() {
-    backBtn.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View v) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getString(R.string.contact_us_back));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            try {
-              InputMethodManager inputMethodManager =
-                  (InputMethodManager) getSystemService(Activity.INPUT_METHOD_SERVICE);
-              inputMethodManager.hideSoftInputFromWindow(getCurrentFocus().getWindowToken(), 0);
-            } catch (Exception e) {
-              Logger.log(e);
-            }
-            finish();
-          }
-        });
-    submitButton.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View v) {
-            Bundle eventProperties = new Bundle();
-            eventProperties.putString(
-                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
-                getString(R.string.contact_us_submit));
-            analyticsInstance.logEvent(
-                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            if (firstName.getText().toString().equalsIgnoreCase("")
-                && email.getText().toString().equalsIgnoreCase("")
-                && subject.getText().toString().equalsIgnoreCase("")
-                && message.getText().toString().equalsIgnoreCase("")) {
-              Toast.makeText(
-                      ContactUsActivity.this,
-                      getResources().getString(R.string.enter_all_field_empty),
-                      Toast.LENGTH_SHORT)
-                  .show();
-            } else if (firstName.getText().toString().equalsIgnoreCase("")) {
-              Toast.makeText(
-                      ContactUsActivity.this,
-                      getResources().getString(R.string.first_name_empty),
-                      Toast.LENGTH_SHORT)
-                  .show();
-            } else if (email.getText().toString().equalsIgnoreCase("")) {
-              Toast.makeText(
-                      ContactUsActivity.this,
-                      getResources().getString(R.string.email_empty),
-                      Toast.LENGTH_SHORT)
-                  .show();
-            } else if (!AppController.getHelperIsValidEmail(email.getText().toString())) {
-              Toast.makeText(
-                      ContactUsActivity.this,
-                      getResources().getString(R.string.email_validation),
-                      Toast.LENGTH_SHORT)
-                  .show();
-            } else if (subject.getText().toString().equalsIgnoreCase("")) {
-              Toast.makeText(
-                      ContactUsActivity.this,
-                      getResources().getString(R.string.subject_empty),
-                      Toast.LENGTH_SHORT)
-                  .show();
-            } else if (message.getText().toString().equalsIgnoreCase("")) {
-              Toast.makeText(
-                      ContactUsActivity.this,
-                      getResources().getString(R.string.message_empty),
-                      Toast.LENGTH_SHORT)
-                  .show();
-            } else {
-              callContactUsWebservice();
-            }
-          }
-        });
-  }
+    private void initializeXmlId() {
+        backBtn = (RelativeLayout) findViewById(R.id.backBtn);
 
-  private void callContactUsWebservice() {
-    AppController.getHelperProgressDialog().showProgress(ContactUsActivity.this, "", "", false);
+        title = (AppCompatTextView) findViewById(R.id.title);
+        firstNameText = (AppCompatTextView) findViewById(R.id.firstName);
+        emailText = (AppCompatTextView) findViewById(R.id.email_label);
+        subjectText = (AppCompatTextView) findViewById(R.id.subject_label);
+        messageText = (AppCompatTextView) findViewById(R.id.message_label);
 
-    HashMap<String, String> params = new HashMap<>();
-    params.put("subject", subject.getText().toString());
-    params.put("body", message.getText().toString());
-    params.put("firstName", firstName.getText().toString());
-    params.put("email", email.getText().toString());
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+        firstName = (AppCompatEditText) findViewById(R.id.edittxt_firstName);
+        email = (AppCompatEditText) findViewById(R.id.edittxt_email);
+        subject = (AppCompatEditText) findViewById(R.id.edittxt_subject);
+        message = (AppCompatEditText) findViewById(R.id.edittxt_message);
+
+        submitButton = (AppCompatTextView) findViewById(R.id.submitButton);
+        offlineIndicatior = findViewById(R.id.offlineIndicatior);
+    }
+
+    private void setFont() {
+        try {
+            title.setTypeface(AppController.getTypeface(ContactUsActivity.this, "medium"));
+            firstNameText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+            emailText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+            subjectText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+            messageText.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+
+            firstName.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+            email.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+            subject.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+            message.setTypeface(AppController.getTypeface(ContactUsActivity.this, "regular"));
+
+        } catch (Exception e) {
+            Logger.log(e);
+        }
+    }
+
+    private void bindEvents() {
+        backBtn.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        Bundle eventProperties = new Bundle();
+                        eventProperties.putString(
+                                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                                getString(R.string.contact_us_back));
+                        analyticsInstance.logEvent(
+                                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                        try {
+                            InputMethodManager inputMethodManager =
+                                    (InputMethodManager) getSystemService(Activity.INPUT_METHOD_SERVICE);
+                            inputMethodManager.hideSoftInputFromWindow(getCurrentFocus().getWindowToken(), 0);
+                        } catch (Exception e) {
+                            Logger.log(e);
+                        }
+                        finish();
+                    }
+                });
+        submitButton.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        Bundle eventProperties = new Bundle();
+                        eventProperties.putString(
+                                CustomFirebaseAnalytics.Param.BUTTON_CLICK_REASON,
+                                getString(R.string.contact_us_submit));
+                        analyticsInstance.logEvent(
+                                CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
+                        if (firstName.getText().toString().equalsIgnoreCase("")
+                                && email.getText().toString().equalsIgnoreCase("")
+                                && subject.getText().toString().equalsIgnoreCase("")
+                                && message.getText().toString().equalsIgnoreCase("")) {
+                            Toast.makeText(
+                                            ContactUsActivity.this,
+                                            getResources().getString(R.string.enter_all_field_empty),
+                                            Toast.LENGTH_SHORT)
+                                    .show();
+                        } else if (firstName.getText().toString().equalsIgnoreCase("")) {
+                            Toast.makeText(
+                                            ContactUsActivity.this,
+                                            getResources().getString(R.string.first_name_empty),
+                                            Toast.LENGTH_SHORT)
+                                    .show();
+                        } else if (email.getText().toString().equalsIgnoreCase("")) {
+                            Toast.makeText(
+                                            ContactUsActivity.this,
+                                            getResources().getString(R.string.email_empty),
+                                            Toast.LENGTH_SHORT)
+                                    .show();
+                        } else if (!AppController.getHelperIsValidEmail(email.getText().toString())) {
+                            Toast.makeText(
+                                            ContactUsActivity.this,
+                                            getResources().getString(R.string.email_validation),
+                                            Toast.LENGTH_SHORT)
+                                    .show();
+                        } else if (subject.getText().toString().equalsIgnoreCase("")) {
+                            Toast.makeText(
+                                            ContactUsActivity.this,
+                                            getResources().getString(R.string.subject_empty),
+                                            Toast.LENGTH_SHORT)
+                                    .show();
+                        } else if (message.getText().toString().equalsIgnoreCase("")) {
+                            Toast.makeText(
+                                            ContactUsActivity.this,
+                                            getResources().getString(R.string.message_empty),
+                                            Toast.LENGTH_SHORT)
+                                    .show();
+                        } else {
+                            callContactUsWebservice();
+                        }
+                    }
+                });
+    }
+
+    private void callContactUsWebservice() {
+        AppController.getHelperProgressDialog().showProgress(ContactUsActivity.this, "", "", false);
+
+        HashMap<String, String> params = new HashMap<>();
+        params.put("subject", subject.getText().toString());
+        params.put("body", message.getText().toString());
+        params.put("firstName", firstName.getText().toString());
+        params.put("email", email.getText().toString());
+    /*ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "post",
             Urls.CONTACT_US,
@@ -209,62 +218,95 @@ public class ContactUsActivity extends AppCompatActivity implements ApiCall.OnAs
     ContactUsEvent contactUsEvent = new ContactUsEvent();
     contactUsEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
-    studyModulePresenter.performContactUsEvent(contactUsEvent);
-  }
+    studyModulePresenter.performContactUsEvent(contactUsEvent);*/
+        participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+        NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+                        .contactUs(params),
+                (data) -> {
+                    try {
+                        getContactUs(data);
+                    } catch (Exception e) {
+                        Log.e("TAG", e.getMessage());
+                    }
+                }, (error) -> {
+                   this.runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
 
-  @Override
-  public <T> void asyncResponse(T response, int responseCode) {
-    if (responseCode == CONTACT_US) {
-      if (response != null) {
+                            Toast.makeText(ContactUsActivity.this,
+                                AppController.getErrorMessage(error), Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                });
+    }
+
+    private void getContactUs(ReachOut reachOut) {
+
+        if (reachOut != null) {
+           this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    AppController.getHelperProgressDialog().dismissDialog();
+                    Toast.makeText(ContactUsActivity.this, getResources().getString(R.string.contact_us_message), Toast.LENGTH_SHORT).show();
+                    finish();
+                }
+            });
+        }
+    }
+
+    @Override
+    public <T> void asyncResponse(T response, int responseCode) {
+        if (responseCode == CONTACT_US) {
+            if (response != null) {
+                AppController.getHelperProgressDialog().dismissDialog();
+                Toast.makeText(
+                                ContactUsActivity.this,
+                                getResources().getString(R.string.contact_us_message),
+                                Toast.LENGTH_SHORT)
+                        .show();
+                finish();
+            }
+        }
+    }
+
+    @Override
+    public void asyncResponseFailure(int responseCode, String errormsg, String statusCode) {
         AppController.getHelperProgressDialog().dismissDialog();
-        Toast.makeText(
-                ContactUsActivity.this,
-                getResources().getString(R.string.contact_us_message),
-                Toast.LENGTH_SHORT)
-            .show();
-        finish();
-      }
+        if (statusCode.equalsIgnoreCase("401")) {
+            Toast.makeText(ContactUsActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+            AppController.getHelperSessionExpired(ContactUsActivity.this, errormsg);
+        } else {
+            if (responseCode == CONTACT_US) {
+                Toast.makeText(ContactUsActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+            }
+        }
     }
-  }
 
-  @Override
-  public void asyncResponseFailure(int responseCode, String errormsg, String statusCode) {
-    AppController.getHelperProgressDialog().dismissDialog();
-    if (statusCode.equalsIgnoreCase("401")) {
-      Toast.makeText(ContactUsActivity.this, errormsg, Toast.LENGTH_SHORT).show();
-      AppController.getHelperSessionExpired(ContactUsActivity.this, errormsg);
-    } else {
-      if (responseCode == CONTACT_US) {
-        Toast.makeText(ContactUsActivity.this, errormsg, Toast.LENGTH_SHORT).show();
-      }
+    @Override
+    public void onNetworkChanged(boolean status) {
+        if (!status) {
+            offlineIndicatior.setVisibility(View.VISIBLE);
+            submitButton.setClickable(false);
+            submitButton.setAlpha(0.5F);
+        } else {
+            offlineIndicatior.setVisibility(View.GONE);
+            submitButton.setClickable(true);
+            submitButton.setAlpha(1F);
+        }
     }
-  }
 
-  @Override
-  public void onNetworkChanged(boolean status) {
-    if (!status) {
-      offlineIndicatior.setVisibility(View.VISIBLE);
-      submitButton.setClickable(false);
-      submitButton.setAlpha(0.5F);
-    } else {
-      offlineIndicatior.setVisibility(View.GONE);
-      submitButton.setClickable(true);
-      submitButton.setAlpha(1F);
+    @Override
+    public void onResume() {
+        super.onResume();
+        IntentFilter intentFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+        registerReceiver(networkChangeReceiver, intentFilter);
     }
-  }
 
-  @Override
-  public void onResume() {
-    super.onResume();
-    IntentFilter intentFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
-    registerReceiver(networkChangeReceiver, intentFilter);
-  }
-
-  @Override
-  public void onPause() {
-    super.onPause();
-    if (networkChangeReceiver != null) {
-      unregisterReceiver(networkChangeReceiver);
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (networkChangeReceiver != null) {
+            unregisterReceiver(networkChangeReceiver);
+        }
     }
-  }
 }

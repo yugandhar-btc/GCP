@@ -15,6 +15,7 @@
 
 package com.harvard;
 
+
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -23,15 +24,20 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import com.harvard.gatewaymodule.GatewayActivity;
 import com.harvard.offlinemodule.auth.SyncAdapterManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
+import com.harvard.studyappmodule.ContactUsActivity;
 import com.harvard.studyappmodule.StandaloneActivity;
 import com.harvard.studyappmodule.StudyActivity;
+import com.harvard.studyappmodule.studymodel.Study;
 import com.harvard.usermodule.NewPasscodeSetupActivity;
+import com.harvard.usermodule.SignupActivity;
 import com.harvard.usermodule.UserModulePresenter;
 import com.harvard.usermodule.event.RegisterUserEvent;
 import com.harvard.usermodule.model.Apps;
@@ -39,12 +45,21 @@ import com.harvard.utils.AppController;
 import com.harvard.utils.CustomFirebaseAnalytics;
 import com.harvard.utils.SharedPreferenceHelper;
 import com.harvard.utils.Urls;
-import com.harvard.utils.realm.RealmMigrationHelper;
 import com.harvard.utils.version.Version;
 import com.harvard.utils.version.VersionChecker;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import java.util.HashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+import rx.Observable;
+import rx.Subscriber;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.schedulers.Schedulers;
 
 
 public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsyncRequestComplete {
@@ -56,6 +71,10 @@ public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsync
   private static final int RESULT_CODE_UPGRADE = 102;
   private Apps apps;
   private CustomFirebaseAnalytics analyticsInstance;
+  private ParticipantDataStoreAPIInterface anInterface;
+  private boolean background = false;
+  private boolean api = false;
+  private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -63,41 +82,69 @@ public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsync
     setContentView(R.layout.activity_splash);
 
     AppController.keystoreInitilize(SplashActivity.this);
-    new checkAndMigrate(this).execute();
+    new checkAndMigrate(this);
+
     analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
+    anInterface = ServiceManager.getInstance()
+        .createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
   }
 
 
-  private class checkAndMigrate extends AsyncTask<String, Void, String> {
+  private class checkAndMigrate
+//      extends AsyncTask<String, Void, String>
+  {
     Context context;
 
     public checkAndMigrate(Context context) {
       this.context = context;
+      execute();
     }
 
-    @Override
-    protected String doInBackground(String... params) {
-      AppController.checkIfAppNameChangeAndMigrate(context);
-      return "";
+    private void execute() {
+      Executor executor = Executors.newSingleThreadExecutor();
+
+      Handler handler = new Handler(Looper.getMainLooper());
+
+      executor.execute(() -> {
+        // Background task
+//        AppController.checkIfAppNameChangeAndMigrate(context);
+
+        handler.post(() -> {
+          // sync registration
+          AppController.checkIfAppNameChangeAndMigrate(context);
+          SyncAdapterManager.init(context);
+          getAppsInfo();
+
+          AppController.getHelperSharedPreference().writePreference(SplashActivity.this, getString(R.string.json_object_filter), "");
+
+        });
+      });
+
     }
 
-    @Override
-    protected void onPostExecute(String result) {
-      // sync registration
-      SyncAdapterManager.init(context);
-      getAppsInfo();
-
-      AppController.getHelperSharedPreference()
-          .writePreference(SplashActivity.this, getString(R.string.json_object_filter), "");
-    }
-
-    @Override
-    protected void onPreExecute() {}
+//    @Override
+//    protected String doInBackground(String... params) {
+//      AppController.checkIfAppNameChangeAndMigrate(context);
+//      return "";
+//    }
+//
+//    @Override
+//    protected void onPostExecute(String result) {
+//      // sync registration
+//      SyncAdapterManager.init(context);
+//      getAppsInfo();
+//
+//      AppController.getHelperSharedPreference()
+//          .writePreference(SplashActivity.this, getString(R.string.json_object_filter), "");
+//    }
+//
+//    @Override
+//    protected void onPreExecute() {}
   }
 
   private void getAppsInfo() {
     AppController.getHelperProgressDialog().showProgress(SplashActivity.this, "", "", false);
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+   /* ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "get",
             Urls.APPS + "?appId=" + AppConfig.APP_ID_VALUE,
@@ -112,7 +159,51 @@ public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsync
     RegisterUserEvent registerUserEvent = new RegisterUserEvent();
     registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performRegistration(registerUserEvent);
+    userModulePresenter.performRegistration(registerUserEvent);*/
+    participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+                    .getApps(AppConfig.APP_ID_VALUE),
+            (data) -> {
+              try {
+                setApps(data);
+              } catch (Exception e) {
+                Log.e("TAG", e.getMessage());
+              }
+            }, (error) -> {
+              this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  retryAlert();
+                }
+              });
+            });
+  }
+
+  private void setApps(Apps appsResponse) {
+      this.runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          AppController.getHelperProgressDialog().dismissDialog();
+            apps = appsResponse;
+            if (apps != null && apps.getVersion().getAndroid().getLatestVersion() != null) {
+              DbServiceSubscriber dbServiceSubscriber = new DbServiceSubscriber();
+              apps.setAppId(AppConfig.APP_ID_VALUE);
+              dbServiceSubscriber.saveApps(SplashActivity.this, apps);
+              Version currVer = new Version(AppController.currentVersion());
+              Version newVer = new Version(apps.getVersion().getAndroid().getLatestVersion());
+              newVersion = apps.getVersion().getAndroid().getLatestVersion();
+              force = Boolean.parseBoolean(apps.getVersion().getAndroid().getForceUpdate());
+              if (currVer.equals(newVer) || currVer.compareTo(newVer) > 0) {
+                isUpgrade(false, newVersion, force);
+              } else {
+                isUpgrade(true, newVersion, force);
+              }
+            } else {
+              retryAlert();
+            }
+          }
+
+      });
   }
 
   @Override
@@ -148,6 +239,7 @@ public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsync
   }
 
   private void retryAlert() {
+    AppController.getHelperProgressDialog().dismissDialog();
     AlertDialog.Builder alertDialogBuilder =
         new AlertDialog.Builder(SplashActivity.this, R.style.MyAlertDialogStyle);
     alertDialogBuilder
@@ -202,9 +294,13 @@ public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsync
                         SplashActivity.this, getResources().getString(R.string.verified), "")
                     .equalsIgnoreCase("true")) {
                   if (AppConfig.AppType.equalsIgnoreCase(getString(R.string.app_gateway))) {
+                    AppController.getHelperProgressDialog().dismissDialog();
+
                     Intent intent = new Intent(SplashActivity.this, StudyActivity.class);
                     startActivity(intent);
                   } else {
+                    AppController.getHelperProgressDialog().dismissDialog();
+
                     Intent intent = new Intent(SplashActivity.this, StandaloneActivity.class);
                     startActivity(intent);
                   }
@@ -216,9 +312,13 @@ public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsync
                     AppController.deleteKey("passcode_" + pass);
                   }
                   if (AppConfig.AppType.equalsIgnoreCase(getString(R.string.app_gateway))) {
+                    AppController.getHelperProgressDialog().dismissDialog();
+
                     Intent intent = new Intent(SplashActivity.this, GatewayActivity.class);
                     startActivity(intent);
                   } else {
+                    AppController.getHelperProgressDialog().dismissDialog();
+
                     Intent intent = new Intent(SplashActivity.this, StandaloneActivity.class);
                     startActivity(intent);
                   }
@@ -274,39 +374,74 @@ public class SplashActivity extends AppCompatActivity implements ApiCall.OnAsync
         }
       }
     } else if (requestCode == PASSCODE_RESPONSE) {
+      AppController.getHelperProgressDialog().showProgress(SplashActivity.this, "", "", false);
+
       startmain();
     }
   }
 
-  private class LongOperation extends AsyncTask<String, Void, String> {
+  private class LongOperation
+//      extends AsyncTask<String, Void, String>
+  {
+    private void execute() {
 
-    @Override
-    protected String doInBackground(String... params) {
-      if (AppController.getHelperSharedPreference()
-          .readPreference(
-              getApplicationContext(), getResources().getString(R.string.usepasscode), "")
-          .equalsIgnoreCase("yes")) {
-        while (AppController.getHelperSharedPreference()
-            .readPreference(getApplicationContext(), "passcodeAnswered", "no")
-            .equalsIgnoreCase("no")) {
-          if (AppController.getHelperSharedPreference()
+      Executor executor = Executors.newSingleThreadExecutor();
+
+      Handler handler = new Handler(Looper.getMainLooper());
+      AppController.getHelperProgressDialog().showProgress(SplashActivity.this, "", "", false);
+      executor.execute(() -> {
+        if (AppController.getHelperSharedPreference()
+            .readPreference(
+                getApplicationContext(), getResources().getString(R.string.usepasscode), "")
+            .equalsIgnoreCase("yes")) {
+          while (AppController.getHelperSharedPreference()
               .readPreference(getApplicationContext(), "passcodeAnswered", "no")
-              .equalsIgnoreCase("yes")) {
-            break;
+              .equalsIgnoreCase("no")) {
+            if (AppController.getHelperSharedPreference()
+                .readPreference(getApplicationContext(), "passcodeAnswered", "no")
+                .equalsIgnoreCase("yes")) {
+              break;
+            }
           }
         }
-      }
-      return "Executed";
-    }
+        handler.post(() -> {
+          AppController.getHelperProgressDialog().showProgress(SplashActivity.this, "", "", false);
+          startmain();
+        });
+      });
 
-    @Override
-    protected void onPostExecute(String result) {
-      startmain();
     }
-
-    @Override
-    protected void onPreExecute() {
-    }
+//    @Override
+//    protected String doInBackground(String... params) {
+//      if (AppController.getHelperSharedPreference()
+//          .readPreference(
+//              getApplicationContext(), getResources().getString(R.string.usepasscode), "")
+//          .equalsIgnoreCase("yes")) {
+//        while (AppController.getHelperSharedPreference()
+//            .readPreference(getApplicationContext(), "passcodeAnswered", "no")
+//            .equalsIgnoreCase("no")) {
+//          if (AppController.getHelperSharedPreference()
+//              .readPreference(getApplicationContext(), "passcodeAnswered", "no")
+//              .equalsIgnoreCase("yes")) {
+//            break;
+//          }
+//        }
+//      }
+//      return "Executed";
+//    }
+//
+//    @Override
+//    protected void onPostExecute(String result) {
+//      AppController.getHelperProgressDialog().showProgress(SplashActivity.this, "", "", false);
+//
+//      startmain();
+//    }
+//
+//    @Override
+//    protected void onPreExecute() {
+//      AppController.getHelperProgressDialog().dismissDialog();
+//
+//    }
   }
 
   public void isUpgrade(boolean b, String newVersion, final boolean force) {

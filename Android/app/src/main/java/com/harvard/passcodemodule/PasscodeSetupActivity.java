@@ -20,6 +20,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.RelativeLayout;
@@ -31,6 +32,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatTextView;
 import com.harvard.AppConfig;
 import com.harvard.R;
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.usermodule.UserModulePresenter;
 import com.harvard.usermodule.event.RegisterUserEvent;
@@ -42,6 +44,9 @@ import com.harvard.utils.Urls;
 import com.harvard.utils.version.Version;
 import com.harvard.utils.version.VersionChecker;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import java.util.HashMap;
 
@@ -61,6 +66,8 @@ public class PasscodeSetupActivity extends AppCompatActivity implements ApiCall.
   private String newVersion;
   private boolean force = false;
   private CustomFirebaseAnalytics analyticsInstance;
+  private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
+  private Apps apps;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -204,7 +211,7 @@ public class PasscodeSetupActivity extends AppCompatActivity implements ApiCall.
 
   private void getAppsInfo() {
     AppController.getHelperProgressDialog().showProgress(PasscodeSetupActivity.this, "", "", false);
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+   /* ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "get",
             Urls.APPS + "?appId=" + AppConfig.APP_ID_VALUE,
@@ -219,9 +226,55 @@ public class PasscodeSetupActivity extends AppCompatActivity implements ApiCall.
     RegisterUserEvent registerUserEvent = new RegisterUserEvent();
     registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performRegistration(registerUserEvent);
-  }
+    userModulePresenter.performRegistration(registerUserEvent);*/
+    participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+                    .getApps(AppConfig.APP_ID_VALUE),
+            (data) -> {
+              try {
+                setApps(data);
+              } catch (Exception e) {
+                Log.e("TAG", e.getMessage());
+              }
+            }, (error) -> {
+              this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  retryAlert();
+                }});
+            });
 
+  }
+   public void setApps(Apps appsResponse){
+     this.runOnUiThread(new Runnable() {
+       @Override
+       public void run() {
+
+           apps =appsResponse;
+           if (apps != null && apps.getVersion().getAndroid().getLatestVersion() != null) {
+             DbServiceSubscriber dbServiceSubscriber = new DbServiceSubscriber();
+             apps.setAppId(AppConfig.APP_ID_VALUE);
+             dbServiceSubscriber.saveApps(PasscodeSetupActivity.this, apps);
+             Version currVer = new Version(AppController.currentVersion());
+             Version newVer = new Version(apps.getVersion().getAndroid().getLatestVersion());
+             newVersion = apps.getVersion().getAndroid().getLatestVersion();
+             force = Boolean.parseBoolean(apps.getVersion().getAndroid().getForceUpdate());
+             if (currVer.equals(newVer) || currVer.compareTo(newVer) > 0) {
+               forgotSignin();
+             } else {
+               if (!force) {
+                 forgotSignin();
+               } else {
+                 isUpgrade(true, newVersion, force);
+               }
+             }
+           } else {
+             retryAlert();
+           }
+
+       }});
+
+   }
   @Override
   public <T> void asyncResponse(T response, int responseCode) {
     AppController.getHelperProgressDialog().dismissDialog();

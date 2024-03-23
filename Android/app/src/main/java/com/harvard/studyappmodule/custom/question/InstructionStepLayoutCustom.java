@@ -142,7 +142,7 @@ public class InstructionStepLayoutCustom extends FixedSubmitBarLayout implements
       });
 
       if (step.isOptional()) {
-        submitBar.setNegativeTitle(R.string.rsb_step_skip);
+        submitBar.setNegativeTitle(org.researchstack.backbone.R.string.rsb_step_skip);
         submitBar.setNegativeAction(new Action1() {
           @Override
           public void call(Object v) {

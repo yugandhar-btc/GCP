@@ -136,6 +136,7 @@ public class RealmMigrationHelper implements RealmMigration {
     }
   }
 
+
   public int hashCode() {
     return RealmMigrationHelper.class.hashCode();
   }
@@ -146,5 +147,6 @@ public class RealmMigrationHelper implements RealmMigration {
     }
     return object instanceof RealmMigrationHelper;
   }
+
 
 }

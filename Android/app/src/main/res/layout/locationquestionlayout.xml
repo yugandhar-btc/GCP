@@ -9,7 +9,7 @@
         android:layout_height="wrap_content"
         android:layout_centerInParent="true">
 
-        <EditText
+        <androidx.appcompat.widget.AppCompatEditText
             android:id="@+id/search"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

@@ -17,7 +17,7 @@
             android:layout_centerHorizontal="true"
             android:orientation="vertical">
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/maxdesc"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -25,7 +25,7 @@
                 android:layout_gravity="center"
                 android:gravity="center"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/maxtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -33,7 +33,7 @@
                 android:layout_gravity="center"
                 android:gravity="center"/>
 
-            <ImageView
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/minimage"
                 android:layout_width="30dp"
                 android:layout_height="30dp"/>
@@ -72,21 +72,21 @@
             android:layout_centerHorizontal="true"
             android:orientation="vertical">
 
-            <ImageView
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/maximage"
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:layout_gravity="center"
                 android:gravity="center"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/mintitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:gravity="center"/>
 
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/mindesc"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -96,7 +96,7 @@
 
     </RelativeLayout>
 
-    <TextView
+    <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/currentvalue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

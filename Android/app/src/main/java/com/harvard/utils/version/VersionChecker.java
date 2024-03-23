@@ -16,18 +16,37 @@
 package com.harvard.utils.version;
 
 import android.os.AsyncTask;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonReader;
 import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
+import com.harvard.R;
+import com.harvard.ServiceManager;
+import com.harvard.SplashActivity;
+import com.harvard.offlinemodule.auth.SyncAdapterManager;
+import com.harvard.utils.AppController;
 import com.harvard.utils.Logger;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.HttpRequest;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
 import com.harvard.webservicemodule.apihelper.Responsemodel;
+import com.harvard.webservicemodule.apihelper.StudyDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
+
 import java.io.StringReader;
 import java.net.HttpURLConnection;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
-public class VersionChecker extends AsyncTask<String, String, String> {
+import rx.Subscription;
+
+public class VersionChecker
+//    extends AsyncTask<String, String, String>
+{
 
   private String newVersion;
   private boolean force = false;
@@ -35,16 +54,36 @@ public class VersionChecker extends AsyncTask<String, String, String> {
   private String versionUrl = Urls.BASE_URL_STUDY_DATASTORE + Urls.VERSION_INFO;
   public static String PLAY_STORE_URL =
       "https://play.google.com/store/apps/details?id=" + AppConfig.PackageName;
+  private StudyDataStoreAPIInterface apiInterface;
+  private Subscription mSBNetworkSubscriptionl;
 
   public VersionChecker(Upgrade upgrade) {
     this.upgrade = upgrade;
+    execute();
   }
 
-  @Override
-  protected String doInBackground(String... params) {
-    newVersion = currentVersion();
+  private void execute() {
+    Executor executor = Executors.newSingleThreadExecutor();
+
+    Handler handler = new Handler(Looper.getMainLooper());
+
+    executor.execute(() -> {
+
+      handler.post(() -> {
+            newVersion = currentVersion();
     VersionModel versionModel;
     try {
+
+//      apiInterface = ServiceManager.getInstance().createService(APIInterface.class, UrlTypeConstants.StudyDataStore);
+//      mSBNetworkSubscriptionl = NetworkRequest.performAsyncRequest(apiInterface.getVersionInfo(), (data) -> {
+//        try {
+//          setData(data);
+//        } catch (Exception e) {
+//          Log.e("TAG", "error: " + e.getMessage());
+//        }
+//      }, (error) -> {
+//
+//      });
       Responsemodel responsemodel = HttpRequest.getRequest(versionUrl, null, "STUDY_DATASTORE");
 
       if (responsemodel.getResponseCode().equalsIgnoreCase("" + HttpURLConnection.HTTP_OK)) {
@@ -57,8 +96,38 @@ public class VersionChecker extends AsyncTask<String, String, String> {
     } catch (Exception e) {
       Logger.log(e);
     }
-    return newVersion;
+        Log.e("check","new version is "+newVersion);
+
+      });
+    });
+    Version currVer = new Version(currentVersion());
+    Version newVer = new Version(newVersion);
+    if (currVer.equals(newVer) || currVer.compareTo(newVer) > 0) {
+      upgrade.isUpgrade(false, newVersion, force);
+    } else {
+      upgrade.isUpgrade(true, newVersion, force);
+    }
   }
+
+//  @Override
+//  protected String doInBackground(String... params) {
+//    newVersion = currentVersion();
+//    VersionModel versionModel;
+//    try {
+//      Responsemodel responsemodel = HttpRequest.getRequest(versionUrl, null, "STUDY_DATASTORE");
+//
+//      if (responsemodel.getResponseCode().equalsIgnoreCase("" + HttpURLConnection.HTTP_OK)) {
+//        versionModel = parseJson(responsemodel, VersionModel.class);
+//        if (versionModel != null) {
+//          newVersion = versionModel.getAndroid().getLatestVersion();
+//          force = Boolean.parseBoolean(versionModel.getAndroid().getForceUpdate());
+//        }
+//      }
+//    } catch (Exception e) {
+//      Logger.log(e);
+//    }
+//    return newVersion;
+//  }
 
   private VersionModel parseJson(Responsemodel responseModel, Class genericClass) {
     Gson gson = new Gson();
@@ -71,17 +140,17 @@ public class VersionChecker extends AsyncTask<String, String, String> {
     }
   }
 
-  @Override
-  protected void onPostExecute(String s) {
-    super.onPostExecute(s);
-    Version currVer = new Version(currentVersion());
-    Version newVer = new Version(newVersion);
-    if (currVer.equals(newVer) || currVer.compareTo(newVer) > 0) {
-      upgrade.isUpgrade(false, newVersion, force);
-    } else {
-      upgrade.isUpgrade(true, newVersion, force);
-    }
-  }
+//  @Override
+//  protected void onPostExecute(String s) {
+//    super.onPostExecute(s);
+//    Version currVer = new Version(currentVersion());
+//    Version newVer = new Version(newVersion);
+//    if (currVer.equals(newVer) || currVer.compareTo(newVer) > 0) {
+//      upgrade.isUpgrade(false, newVersion, force);
+//    } else {
+//      upgrade.isUpgrade(true, newVersion, force);
+//    }
+//  }
 
   public interface Upgrade {
     void isUpgrade(boolean b, String newVersion, boolean force);

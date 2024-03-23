@@ -6,6 +6,15 @@ import io.realm.annotations.PrimaryKey;
 public class ConsentPdfData extends RealmObject {
   @PrimaryKey private String StudyId;
   private String pdfPath;
+  private String DataSharingImage;
+
+  public String getDataSharingImage() {
+    return DataSharingImage;
+  }
+
+  public void setDataSharingImage(String dataSharingImage) {
+    DataSharingImage = dataSharingImage;
+  }
 
   public String getStudyId() {
     return StudyId;

@@ -970,7 +970,7 @@ public class DbServiceSubscriber {
     closeRealmObj(realm);
   }
 
-  public void savePdfData(Context context, String studyId, String pdfPath) {
+  public void savePdfData(Context context, String studyId, String pdfPath, String dataSharingImage) {
     realm = AppController.getRealmobj(context);
     ConsentPdfData consentPdfData;
     consentPdfData = realm.where(ConsentPdfData.class).equalTo("StudyId", studyId).findFirst();
@@ -979,7 +979,12 @@ public class DbServiceSubscriber {
       consentPdfData = new ConsentPdfData();
       consentPdfData.setStudyId(studyId);
     }
-    consentPdfData.setPdfPath(pdfPath);
+    if (dataSharingImage != "") {
+      consentPdfData.setDataSharingImage(dataSharingImage);
+    }
+    if (pdfPath != "") {
+      consentPdfData.setPdfPath(pdfPath);
+    }
     realm.copyToRealmOrUpdate(consentPdfData);
     realm.commitTransaction();
     closeRealmObj(realm);
@@ -1059,6 +1064,7 @@ public class DbServiceSubscriber {
     } catch (Exception e) {
       Logger.log(e);
     }
+    closeRealmObj(realm);
   }
 
   public StepRecordCustom getSavedSteps(Task task, Realm realm) {
@@ -1364,7 +1370,24 @@ public class DbServiceSubscriber {
     }
     return null;
   }
+  // save offline data in hash map
+  /*public void saveOfflineInHashMap(Context context, OfflineDataHashMap offlineDataHashMap) {
+    realm = AppController.getRealmobj(context);
+    realm.beginTransaction();
+    realm.copyToRealmOrUpdate(offlineDataHashMap);
+    realm.commitTransaction();
+    closeRealmObj(realm);
+  }
 
+  public RealmResults<OfflineDataHashMap> getOfflineDataInHashMap(Realm realm) {
+    try {
+      return realm.where(OfflineDataHashMap.class).findAll();
+    } catch (Exception e) {
+      Logger.log(e);
+    }
+    return null;
+  }
+*/
   // remove data from perticular index
   public void deleteOfflineDataRow(Context context, final int index) {
     realm = AppController.getRealmobj(context);

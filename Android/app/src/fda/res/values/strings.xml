@@ -3,16 +3,18 @@
 <!-- Update `app_name` with a user-facing name for your application, for example, "Demo App"-->
 <!-- Update `package_name` with the `ApplicationID` that you specified in `Android/app/build.gradle` -->
 <!DOCTYPE resources [
-    <!ENTITY app_name "YOUR_APP_NAME">
-    <!ENTITY package_name "YOUR_PACKAGE_NAME">
+    <!ENTITY app_name "FDA MyStudies">
+    <!ENTITY package_name "com.google.FDAMyStudies">
     ]>
 
 <resources>
     <!--The following strings must be updated-->
     <!-- Update `google_maps_key` with your Google Maps API key (see https://developers.google.com/maps/documentation/android-sdk/get-api-key) -->
-    <string name="google_maps_Key">YOUR_MAPS_KEY</string>
+    <string name="google_maps_Key">AIzaSyAKSZJiYPCPqMGJQGKzIAwLn4iHOgN_v80</string>
 
-    <!-- Keeping deeplink host as package_name to make it unique across apps. This would establish "app://{package_name}/mystudies" as the deeplink URL -->
+    <!-- Update `deeplink_host` with a value that defines your deeplink URL (do not include app:// or context-path) -->
+    <!-- For example, a `deeplink_host` value of "subdomain.domain" would establish "app://subdomain.domain/mystudies" as the deeplink URL -->
+    <!-- Use deeplink_host set to package_name to make it unique across multiple apps. This would establish "app://{package_name}/mystudies" as the deeplink URL -->
     <string name="deeplink_host">&package_name;</string>
 
     <!--The following strings may be customized as desired-->

@@ -8,7 +8,7 @@
 
 package com.harvard.studyappmodule.consent;
 
-import com.harvard.R;
+import org.researchstack.backbone.R;
 import org.researchstack.backbone.step.ConsentDocumentStep;
 
 public class ConsentDocumentStepCustom extends ConsentDocumentStep {

@@ -93,7 +93,7 @@ public class CustomDateQuestionBody implements StepBody {
 
   @Override
   public View getBodyView(int viewType, final LayoutInflater inflater, ViewGroup parent) {
-    View view = inflater.inflate(R.layout.rsb_item_date_view, parent, false);
+    View view = inflater.inflate(org.researchstack.backbone.R.layout.rsb_item_date_view, parent, false);
 
     TextView title = (TextView) view.findViewById(R.id.label);
     analyticsInstance = CustomFirebaseAnalytics.getInstance(inflater.getContext());
@@ -110,11 +110,11 @@ public class CustomDateQuestionBody implements StepBody {
       textView.setHint(step.getPlaceholder());
     } else {
       if (format.getStyle() == AnswerFormatCustom.DateAnswerStyle.Date) {
-        textView.setHint(R.string.rsb_hint_step_body_date);
+        textView.setHint(org.researchstack.backbone.R.string.rsb_hint_step_body_date);
       } else if (format.getStyle() == AnswerFormatCustom.DateAnswerStyle.TimeOfDay) {
-        textView.setHint(R.string.rsb_hint_step_body_time);
+        textView.setHint(org.researchstack.backbone.R.string.rsb_hint_step_body_time);
       } else if (format.getStyle() == AnswerFormatCustom.DateAnswerStyle.DateAndTime) {
-        textView.setHint(R.string.rsb_hint_step_body_datetime);
+        textView.setHint(org.researchstack.backbone.R.string.rsb_hint_step_body_datetime);
       }
     }
 
@@ -184,7 +184,7 @@ public class CustomDateQuestionBody implements StepBody {
   public BodyAnswer getBodyAnswerState() {
     if (!hasChosenDate) {
       if (format.getStyle() == AnswerFormatCustom.DateAnswerStyle.Date) {
-        return new BodyAnswer(false, R.string.rsb_invalid_answer_date_none);
+        return new BodyAnswer(false, org.researchstack.backbone.R.string.rsb_invalid_answer_date_none);
       } else if (format.getStyle() == AnswerFormatCustom.DateAnswerStyle.TimeOfDay) {
         return new BodyAnswer(false, R.string.rsb_invalid_answer_time_none);
       } else {
@@ -198,7 +198,7 @@ public class CustomDateQuestionBody implements StepBody {
   private void showDialog(final TextView tv, final LayoutInflater inflater) {
     // need to find a material date picker, since it's not in the support library
     final ContextThemeWrapper contextWrapper =
-            new ContextThemeWrapper(tv.getContext(), R.style.Theme_Backbone);
+            new ContextThemeWrapper(tv.getContext(), org.researchstack.backbone.R.style.Theme_Backbone);
     if (format.getStyle() == AnswerFormatCustom.DateAnswerStyle.Date) {
       final DatePickerDialog datePickerDialog = new DatePickerDialog(contextWrapper, new DatePickerDialog.OnDateSetListener() {
         @Override

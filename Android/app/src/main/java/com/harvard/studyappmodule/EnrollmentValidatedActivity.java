@@ -24,6 +24,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatTextView;
 import com.harvard.AppConfig;
 import com.harvard.R;
+import com.harvard.ServiceManager;
+import com.harvard.eligibilitymodule.NotEligibleActivity;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.consent.ConsentBuilder;
 import com.harvard.studyappmodule.consent.CustomConsentViewTaskActivity;
@@ -38,8 +40,13 @@ import com.harvard.utils.CustomFirebaseAnalytics;
 import com.harvard.utils.Logger;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.EnrollmentDataStoreInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantEnrollmentDatastoreConfigEvent;
 import io.realm.Realm;
+
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import org.json.JSONArray;
@@ -62,6 +69,7 @@ public class EnrollmentValidatedActivity extends AppCompatActivity
   private Realm realm;
   private static final int UPDATE_USER_PREFERENCE_RESPONSE_CODE = 200;
   private CustomFirebaseAnalytics analyticsInstance;
+  private EnrollmentDataStoreInterface enrollmentDataStoreInterface;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -152,29 +160,21 @@ public class EnrollmentValidatedActivity extends AppCompatActivity
             AppController.getHelperSharedPreference()
                     .readPreference(this, getResources().getString(R.string.userid), ""));
 
-    JSONObject jsonObject = new JSONObject();
+    HashMap<String, Object> jsonObject = new HashMap<>();
 
-    JSONArray studieslist = new JSONArray();
-    JSONObject studiestatus = new JSONObject();
-    try {
-      studiestatus.put("studyId", getIntent().getStringExtra("studyId"));
-      if (getIntent().getStringExtra("siteId") != null
-              && !getIntent().getStringExtra("siteId").equalsIgnoreCase("")) {
-        studiestatus.put("siteId", getIntent().getStringExtra("siteId"));
-      }
-      studiestatus.put("status", StudyFragment.YET_TO_JOIN);
-      studiestatus.put("userStudyVersion", consentDocumentData.getConsent().getVersion());
-    } catch (JSONException e) {
-      Logger.log(e);
+    ArrayList studieslist = new ArrayList();
+    HashMap<String, Object> studiestatus = new HashMap<>();
+    studiestatus.put("studyId", getIntent().getStringExtra("studyId"));
+    if (getIntent().getStringExtra("siteId") != null
+            && !getIntent().getStringExtra("siteId").equalsIgnoreCase("")) {
+      studiestatus.put("siteId", getIntent().getStringExtra("siteId"));
     }
+    studiestatus.put("status", StudyFragment.YET_TO_JOIN);
+    studiestatus.put("userStudyVersion", consentDocumentData.getConsent().getVersion());
 
-    studieslist.put(studiestatus);
-    try {
-      jsonObject.put("studies", studieslist);
-    } catch (JSONException e) {
-      Logger.log(e);
-    }
-    ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
+    studieslist.add(studiestatus);
+    jsonObject.put("studies", studieslist);
+    /*  ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
             new ParticipantEnrollmentDatastoreConfigEvent(
                     "post_object",
                     Urls.UPDATE_STUDY_PREFERENCE,
@@ -190,7 +190,32 @@ public class EnrollmentValidatedActivity extends AppCompatActivity
     updatePreferenceEvent.setParticipantEnrollmentDatastoreConfigEvent(
             participantEnrollmentDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performUpdateUserPreference(updatePreferenceEvent);
+    userModulePresenter.performUpdateUserPreference(updatePreferenceEvent);*/
+
+    enrollmentDataStoreInterface = new ServiceManager().createService(EnrollmentDataStoreInterface.class, UrlTypeConstants.EnrollmentDataStore);
+    NetworkRequest.performAsyncRequest(enrollmentDataStoreInterface
+                    .updateStudyState(header, jsonObject),
+            (data) -> {
+              this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  dbServiceSubscriber.updateStudyPreferenceDB(
+                          EnrollmentValidatedActivity.this, getIntent().getStringExtra("studyId"),
+                          StudyFragment.YET_TO_JOIN, "", "", "", "", "");
+                }
+              });
+            }, (error) -> {
+              this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  AppController.getHelperProgressDialog().dismissDialog();
+
+                  dbServiceSubscriber.updateStudyPreferenceDB(
+                          EnrollmentValidatedActivity.this, getIntent().getStringExtra("studyId"),
+                          StudyFragment.YET_TO_JOIN, "", "", "", "", "");                }
+              });
+            });
   }
 
   @Override

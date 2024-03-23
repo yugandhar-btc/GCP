@@ -22,6 +22,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.text.Html;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -243,6 +244,8 @@ public class SurveyActivitiesListAdapter
           holder.process.setVisibility(View.GONE);
         }
         holder.run.setVisibility(View.VISIBLE);
+        Log.e("check","total run are "+
+            currentRunStatusForActivities.get(holder.getAdapterPosition()).getTotalRun());
         holder.run.setText(
                 context.getResources().getString(R.string.run)
                         + ": "

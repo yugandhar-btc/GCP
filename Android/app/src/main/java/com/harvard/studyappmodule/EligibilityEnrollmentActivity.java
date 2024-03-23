@@ -20,6 +20,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.RelativeLayout;
@@ -28,6 +29,8 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatTextView;
 import com.harvard.R;
+import com.harvard.ServiceManager;
+import com.harvard.studyappmodule.consent.CustomConsentViewTaskActivity;
 import com.harvard.studyappmodule.enroll.EnrollData;
 import com.harvard.studyappmodule.events.VerifyEnrollmentIdEvent;
 import com.harvard.utils.AppController;
@@ -37,6 +40,9 @@ import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.SharedPreferenceHelper;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.EnrollmentDataStoreInterface;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantEnrollmentDatastoreConfigEvent;
 import java.util.HashMap;
 
@@ -54,6 +60,8 @@ public class EligibilityEnrollmentActivity extends AppCompatActivity
   private CustomFirebaseAnalytics analyticsInstance;
   private TextView offlineIndicatior;
   private NetworkChangeReceiver networkChangeReceiver;
+  private EnrollmentDataStoreInterface enrollmentDataStoreInterface;
+  private EnrollData enrollData;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -160,7 +168,7 @@ public class EligibilityEnrollmentActivity extends AppCompatActivity
         "Bearer "
             + SharedPreferenceHelper.readPreference(
                 EligibilityEnrollmentActivity.this, getString(R.string.auth), ""));
-
+/*
     ParticipantEnrollmentDatastoreConfigEvent participantEnrollmentDatastoreConfigEvent =
         new ParticipantEnrollmentDatastoreConfigEvent(
             "post_json",
@@ -177,7 +185,67 @@ public class EligibilityEnrollmentActivity extends AppCompatActivity
     verifyEnrollmentIdEvent.setParticipantEnrollmentDatastoreConfigEvent(
         participantEnrollmentDatastoreConfigEvent);
     StudyModulePresenter studyModulePresenter = new StudyModulePresenter();
-    studyModulePresenter.performVerifyEnrollmentId(verifyEnrollmentIdEvent);
+    studyModulePresenter.performVerifyEnrollmentId(verifyEnrollmentIdEvent);*/
+    enrollmentDataStoreInterface = new ServiceManager().createService(EnrollmentDataStoreInterface.class, UrlTypeConstants.EnrollmentDataStore);
+    NetworkRequest.performAsyncRequest(enrollmentDataStoreInterface
+                    .validateEnrollmentToken(header, params),
+            (data) -> {
+              try {
+                setValidateEnrollData(data);
+              } catch (Exception e) {
+                Log.e("TAG", e.getMessage());
+              }
+
+            }, (error) -> {
+              this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  int code = AppController.getErrorCode(error);
+                  String errormsg = AppController.getErrorMessage(error);
+
+                  if (code == 401) {
+                    AppController.getHelperSessionExpired(EligibilityEnrollmentActivity.this, errormsg);
+                  } else {
+                    AppController.getHelperProgressDialog().dismissDialog();
+                    Toast.makeText(EligibilityEnrollmentActivity.this, errormsg, Toast.LENGTH_SHORT).show();
+
+                  }
+                }});
+            });
+  }
+
+  private void setValidateEnrollData(EnrollData enrollDataResponse) {
+    this.runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        AppController.getHelperProgressDialog().dismissDialog();
+        enrollData = enrollDataResponse;
+        if (enrollData != null) {
+
+          Intent intent = new Intent(EligibilityEnrollmentActivity.this, EnrollmentValidatedActivity.class);
+          intent.putExtra("enrollId", enrollmentID.getText().toString().trim());
+          intent.putExtra("siteId", enrollData.getSiteId());
+          intent.putExtra("studyId", getIntent().getStringExtra("studyId"));
+          intent.putExtra("title", getIntent().getStringExtra("title"));
+          intent.putExtra("eligibility", getIntent().getStringExtra("eligibility"));
+          intent.putExtra("type", getIntent().getStringExtra("type"));
+          enteredId = enrollmentID.getText().toString().trim();
+          enrollmentID.setText("");
+          if (getIntent().getStringExtra("eligibility").equalsIgnoreCase("combined")) {
+            Intent intent1 = new Intent();
+            intent1.putExtra("enrollId", "" + enteredId);
+            intent1.putExtra("siteId", "" + enrollData.getSiteId());
+            setResult(RESULT_OK, intent1);
+            finish();
+          } else {
+            startActivity(intent);
+            finish();
+          }
+        } else {
+          Toast.makeText(EligibilityEnrollmentActivity.this, R.string.unable_to_parse, Toast.LENGTH_SHORT).show();
+        }
+      }});
   }
 
   @Override

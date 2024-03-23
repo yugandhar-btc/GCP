@@ -15,28 +15,37 @@
 
 package com.harvard.gatewaymodule;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
 import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatTextView;
 import androidx.browser.customtabs.CustomTabsIntent;
+import androidx.core.app.ActivityCompat;
 import androidx.viewpager.widget.ViewPager;
 import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
 import com.harvard.R;
+import com.harvard.ServiceManager;
+import com.harvard.SplashActivity;
 import com.harvard.gatewaymodule.events.GetStartedEvent;
 import com.harvard.storagemodule.DbServiceSubscriber;
 import com.harvard.studyappmodule.StandaloneActivity;
@@ -54,6 +63,9 @@ import com.harvard.utils.Urls;
 import com.harvard.utils.version.Version;
 import com.harvard.utils.version.VersionChecker;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import io.realm.Realm;
 import java.util.HashMap;
@@ -80,6 +92,9 @@ public class GatewayActivity extends AppCompatActivity
   private CustomFirebaseAnalytics analyticsInstance;
   private NetworkChangeReceiver networkChangeReceiver;
   private static final int APPS_RESPONSE = 103;
+  private static final int PERMISSION_REQUEST_CODE = 1000;
+  private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
+  private Apps apps;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -87,6 +102,7 @@ public class GatewayActivity extends AppCompatActivity
     setContentView(R.layout.activity_gateway);
     analyticsInstance = CustomFirebaseAnalytics.getInstance(this);
     networkChangeReceiver = new NetworkChangeReceiver(this);
+    checNotificationPermission();
     initializeXmlId();
     setFont();
     bindEvents();
@@ -98,6 +114,51 @@ public class GatewayActivity extends AppCompatActivity
     }
     if (!AppController.isNetworkAvailable(this)) {
       offlineIndicatior.setVisibility(View.VISIBLE);
+    }
+  }
+
+  private void checNotificationPermission() {
+    String [] permission = null;
+    if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      if(ActivityCompat.checkSelfPermission(getApplicationContext(), android.Manifest.permission.POST_NOTIFICATIONS)
+          != PackageManager.PERMISSION_GRANTED) {
+        permission = new String[] {
+            Manifest.permission.POST_NOTIFICATIONS
+        };
+        if (!hasPermissions(permission)) {
+          ActivityCompat.requestPermissions(
+              (Activity) GatewayActivity.this, permission, PERMISSION_REQUEST_CODE);
+        }
+      }
+    }
+  }
+
+  public boolean hasPermissions(String[] permissions) {
+    if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && permissions != null) {
+      for (String permission : permissions) {
+        if (ActivityCompat.checkSelfPermission(GatewayActivity.this, permission)
+            != PackageManager.PERMISSION_GRANTED) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  @Override
+  public void onRequestPermissionsResult(
+      int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    switch (requestCode) {
+      case PERMISSION_REQUEST_CODE:
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_DENIED) {
+          Toast.makeText(
+                  GatewayActivity.this,
+                  "Please allow notification",
+                  Toast.LENGTH_LONG)
+              .show();
+        }
+        break;
     }
   }
 
@@ -524,7 +585,7 @@ public class GatewayActivity extends AppCompatActivity
 
   private void getAppsInfo() {
     AppController.getHelperProgressDialog().showProgress(GatewayActivity.this, "", "", false);
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+   /* ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "get",
             Urls.APPS + "?appId=" + AppConfig.APP_ID_VALUE,
@@ -539,6 +600,43 @@ public class GatewayActivity extends AppCompatActivity
     RegisterUserEvent registerUserEvent = new RegisterUserEvent();
     registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performRegistration(registerUserEvent);
+    userModulePresenter.performRegistration(registerUserEvent);*/
+    participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+                    .getApps(AppConfig.APP_ID_VALUE),
+            (data) -> {
+              try {
+                setApps(data);
+              } catch (Exception e) {
+                Log.e("TAG", e.getMessage());
+              }
+            }, (error) -> {
+
+            });
+
   }
+  public void setApps(Apps appsResponse){
+          apps = appsResponse;
+    this.runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        CustomTabsIntent.Builder builder =
+                new CustomTabsIntent.Builder()
+                        .setToolbarColor(getResources().getColor(R.color.colorAccent))
+                        .setShowTitle(true)
+                        .setCloseButtonIcon(
+                                BitmapFactory.decodeResource(getResources(), R.drawable.backeligibility))
+                        .setStartAnimations(GatewayActivity.this, R.anim.slide_in_right,
+                                R.anim.slide_out_left)
+                        .setExitAnimations(GatewayActivity.this, R.anim.slide_in_left,
+                                R.anim.slide_out_right);
+        CustomTabsIntent customTabsIntent = builder.build();
+        customTabsIntent.intent.setData(Uri.parse(Urls.LOGIN_URL
+                .replace("$FromEmail", apps.getFromEmail())
+                .replace("$SupportEmail", apps.getSupportEmail())
+                .replace("$AppName", apps.getAppName())
+                .replace("$ContactEmail", apps.getContactUsEmail())));
+        startActivity(customTabsIntent.intent);
+      }});
+     }
 }

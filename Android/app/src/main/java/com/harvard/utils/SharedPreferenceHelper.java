@@ -21,6 +21,9 @@ import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.Map;
 
+import java.util.ArrayList;
+import java.util.Map;
+
 public class SharedPreferenceHelper {
 
   private static final String PREF_NAME = "AppCredentials";
@@ -81,8 +84,9 @@ public class SharedPreferenceHelper {
       }
     }
 
+
     for (Map.Entry<String, ?> prefToRemove : mapPref.entrySet()) {
       sharedPreferences.edit().remove(prefToRemove.getKey()).apply();
     }
-  }
+   }
 }

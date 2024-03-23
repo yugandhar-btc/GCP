@@ -42,18 +42,24 @@ import androidx.appcompat.widget.AppCompatEditText;
 import androidx.appcompat.widget.AppCompatTextView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
+
 import com.google.firebase.iid.FirebaseInstanceId;
 import com.harvard.AppConfig;
 import com.harvard.BuildConfig;
 import com.harvard.R;
+
+import com.harvard.ServiceManager;
 import com.harvard.storagemodule.DbServiceSubscriber;
+
 import com.harvard.usermodule.TermsPrivacyPolicyActivity;
 import com.harvard.usermodule.UserModulePresenter;
 import com.harvard.usermodule.VerificationStepActivity;
 import com.harvard.usermodule.event.RegisterUserEvent;
-import com.harvard.usermodule.event.UpdateUserProfileEvent;
 import com.harvard.usermodule.model.TermsAndConditionData;
+import com.harvard.usermodule.webservicemodel.Info;
 import com.harvard.usermodule.webservicemodel.RegistrationData;
+import com.harvard.usermodule.webservicemodel.Settings;
+import com.harvard.usermodule.webservicemodel.UpdateProfileRequestData;
 import com.harvard.usermodule.webservicemodel.UpdateUserProfileData;
 import com.harvard.utils.AppController;
 import com.harvard.utils.CustomFirebaseAnalytics;
@@ -61,11 +67,12 @@ import com.harvard.utils.Logger;
 import com.harvard.utils.NetworkChangeReceiver;
 import com.harvard.utils.Urls;
 import com.harvard.webservicemodule.apihelper.ApiCall;
+import com.harvard.webservicemodule.apihelper.NetworkRequest;
+import com.harvard.webservicemodule.apihelper.ParticipantDataStoreAPIInterface;
+import com.harvard.webservicemodule.apihelper.UrlTypeConstants;
 import com.harvard.webservicemodule.events.ParticipantDatastoreConfigEvent;
 import io.realm.Realm;
 import java.util.HashMap;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 public class SignupFragment extends Fragment
     implements ApiCall.OnAsyncRequestComplete, NetworkChangeReceiver.NetworkChangeCallback {
@@ -95,6 +102,12 @@ public class SignupFragment extends Fragment
   private CustomFirebaseAnalytics analyticsInstance;
   private TextView offlineIndicatior;
   private NetworkChangeReceiver networkChangeReceiver;
+
+  private ParticipantDataStoreAPIInterface participantDataStoreAPIInterface;
+  private UpdateProfileRequestData updateProfileRequestData;
+  private UpdateUserProfileData updateUserProfileData;
+  private int code =0;
+  private String errormsg = null;
 
   @Override
   public void onAttach(Context context) {
@@ -365,22 +378,51 @@ public class SignupFragment extends Fragment
       HashMap<String, String> params = new HashMap<>();
       params.put("emailId", email.getText().toString());
       params.put("password", password.getText().toString());
-      ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
-          new ParticipantDatastoreConfigEvent(
-              "post",
-              Urls.REGISTER_USER,
-              REGISTRATION_REQUEST,
-              getContext(),
-              RegistrationData.class,
-              params,
-              null,
-              null,
-              false,
-              this);
-      RegisterUserEvent registerUserEvent = new RegisterUserEvent();
-      registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
-      UserModulePresenter userModulePresenter = new UserModulePresenter();
-      userModulePresenter.performRegistration(registerUserEvent);
+//      ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+//          new ParticipantDatastoreConfigEvent(
+//              "post",
+//              Urls.REGISTER_USER,
+//              REGISTRATION_REQUEST,
+//              getContext(),
+//              RegistrationData.class,
+//              params,
+//              null,
+//              null,
+//              false,
+//              this);
+//      RegisterUserEvent registerUserEvent = new RegisterUserEvent();
+//      registerUserEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
+//      UserModulePresenter userModulePresenter = new UserModulePresenter();
+//      userModulePresenter.performRegistration(registerUserEvent);
+
+      participantDataStoreAPIInterface = new ServiceManager().createService(ParticipantDataStoreAPIInterface.class,
+          UrlTypeConstants.ParticipantDataStore);
+      NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface.postRegistrationData(params),
+          (data) -> {
+            confirm(data);
+          }, (error) -> {
+        AppController.getHelperProgressDialog().dismissDialog();
+//            Log.e("check","check error is "+error.getMessage());
+              Toast.makeText(context, AppController.getErrorMessage(error), Toast.LENGTH_SHORT).show();
+          });
+    }
+  }
+
+  private void confirm(RegistrationData data) {
+    if (data != null) {
+      registrationData = data;
+      if (registrationData != null) {
+        Intent intent = new Intent(context, VerificationStepActivity.class);
+        intent.putExtra("email", email.getText().toString());
+        intent.putExtra("type", "signup");
+        startActivity(intent);
+      } else {
+        Toast.makeText(
+                context,
+                context.getResources().getString(R.string.unable_to_signup),
+                Toast.LENGTH_SHORT)
+            .show();
+      }
     }
   }
 
@@ -498,7 +540,7 @@ public class SignupFragment extends Fragment
     params.put("Authorization", "Bearer " + userAuth);
     params.put("userId", userID);
 
-    JSONObject jsonObjBody = new JSONObject();
+    /*JSONObject jsonObjBody = new JSONObject();
     JSONObject infoJson = new JSONObject();
     try {
       infoJson.put("os", "android");
@@ -518,9 +560,20 @@ public class SignupFragment extends Fragment
       jsonObjBody.put("settings", settingJson);
     } catch (JSONException e) {
       Logger.log(e);
-    }
+    }*/
+    updateProfileRequestData = new UpdateProfileRequestData();
+    Settings settings = new Settings();
+    settings.setLocalNotifications(true);
+    settings.setPasscode(true);
+    settings.setRemoteNotifications(true);
+    updateProfileRequestData.setSettings(settings);
+    Info info = new Info();
+    info.setOs("android");
+    info.setAppVersion(BuildConfig.VERSION_NAME + "." + BuildConfig.VERSION_CODE);
+    info.setDeviceToken(deviceToken);
+    updateProfileRequestData.setInfo(info);
 
-    ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
+   /* ParticipantDatastoreConfigEvent participantDatastoreConfigEvent =
         new ParticipantDatastoreConfigEvent(
             "post_object",
             Urls.UPDATE_USER_PROFILE,
@@ -532,10 +585,76 @@ public class SignupFragment extends Fragment
             jsonObjBody,
             false,
             this);
-    UpdateUserProfileEvent updateUserProfileEvent = new UpdateUserProfileEvent();
+            UpdateUserProfileEvent updateUserProfileEvent = new UpdateUserProfileEvent();
     updateUserProfileEvent.setParticipantDatastoreConfigEvent(participantDatastoreConfigEvent);
     UserModulePresenter userModulePresenter = new UserModulePresenter();
-    userModulePresenter.performUpdateUserProfile(updateUserProfileEvent);
+    userModulePresenter.performUpdateUserProfile(updateUserProfileEvent);*/
+    updateProfileApiCall(params,updateProfileRequestData);
+  }
+
+  private void updateProfileApiCall(HashMap<String, String> params, UpdateProfileRequestData updateProfileRequestData) {
+    participantDataStoreAPIInterface = new ServiceManager()
+        .createService(ParticipantDataStoreAPIInterface.class, UrlTypeConstants.ParticipantDataStore);
+    NetworkRequest.performAsyncRequest(participantDataStoreAPIInterface
+            .updateUserProfile(params, updateProfileRequestData),
+        (data) -> {
+          try {
+            setUpdateProfile(data);
+          } catch (Exception e) {
+            Log.e("TAG", e.getMessage());
+          }
+        }, (error) -> {
+          code = AppController.getErrorCode(error);
+          errormsg = AppController.getErrorMessage(error);
+          if (code == 401 && errormsg.equalsIgnoreCase("Unauthorized or Invalid token")) {
+            AppController.checkRefreshToken(context, new AppController.RefreshTokenListener() {
+              @Override
+              public void onRefreshTokenCompleted(String result) {
+                if (result.equalsIgnoreCase("sucess")) {
+                  params.put(
+                      "Authorization",
+                      "Bearer "
+                          + AppController.getHelperSharedPreference()
+                          .readPreference(context, getResources().getString(R.string.auth), ""));
+                  updateProfileApiCall(params,updateProfileRequestData);
+                } else {
+                  AppController.getHelperProgressDialog().dismissDialog();
+                  Toast.makeText(context, "session expired", Toast.LENGTH_LONG).show();
+                  AppController.getHelperSessionExpired(context, "");
+                }
+              }
+            }, UrlTypeConstants.ParticipantDataStore);
+          } else {
+            AppController.getHelperProgressDialog().dismissDialog();
+            Toast.makeText(context, errormsg, Toast.LENGTH_SHORT).show();
+          }
+        });
+  }
+
+  private void setUpdateProfile(UpdateUserProfileData updateProfile) {
+    AppController.getHelperProgressDialog().dismissDialog();
+    ((Activity)context).runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        updateUserProfileData = updateProfile;
+        if (updateUserProfileData != null) {
+          if (updateUserProfileData.getMessage().equalsIgnoreCase("Profile Updated successfully")) {
+            signup(registrationData);
+          } else {
+            Toast.makeText(
+                            context,
+                            context.getResources().getString(R.string.unable_to_signup),
+                            Toast.LENGTH_SHORT)
+                    .show();
+          }
+        } else {
+          Toast.makeText(
+                          context,
+                          context.getResources().getString(R.string.unable_to_signup),
+                          Toast.LENGTH_SHORT)
+                  .show();
+        }
+      }});
   }
 
   @Override
@@ -557,7 +676,7 @@ public class SignupFragment extends Fragment
     protected String doInBackground(String... params) {
       String token = "";
       if (FirebaseInstanceId.getInstance().getToken() == null
-          || FirebaseInstanceId.getInstance().getToken().isEmpty()) {
+          || FirebaseInstanceId.getInstance().getToken().equals("")) {
         boolean regIdStatus = false;
         while (!regIdStatus) {
           token =

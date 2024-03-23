@@ -149,7 +149,7 @@ public class MultiChoiceTextQuestionBody<T>
     final RadioGroup radioGroup = new RadioGroup(inflater.getContext());
     radioGroup.setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
     radioGroup.setDividerDrawable(
-        ContextCompat.getDrawable(parent.getContext(), R.drawable.rsb_divider_empty_8dp));
+        ContextCompat.getDrawable(parent.getContext(), org.researchstack.backbone.R.drawable.rsb_divider_empty_8dp));
 
     if (choices.length >= 10) {
       SearchView editText = new SearchView(inflater.getContext());
@@ -315,7 +315,7 @@ public class MultiChoiceTextQuestionBody<T>
     ViewGroup compactView = (ViewGroup) initViewDefault(inflater, parent);
 
     TextView label =
-        (TextView) inflater.inflate(R.layout.rsb_item_text_view_title_compact, compactView, false);
+        (TextView) inflater.inflate(org.researchstack.backbone.R.layout.rsb_item_text_view_title_compact, compactView, false);
     label.setText(step.getTitle());
 
     compactView.addView(label, 0);
@@ -355,7 +355,7 @@ public class MultiChoiceTextQuestionBody<T>
   @Override
   public BodyAnswer getBodyAnswerState() {
     if (currentSelected.isEmpty()) {
-      return new BodyAnswer(false, R.string.rsb_invalid_answer_choice);
+      return new BodyAnswer(false, org.researchstack.backbone.R.string.rsb_invalid_answer_choice);
     } else if (otherOptionMandatory
         && currentSelected.contains(otherOptionValue)
         && otherText.getText().toString().equalsIgnoreCase("")) {

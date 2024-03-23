@@ -104,24 +104,53 @@ public class ConsentCompletedActivity extends AppCompatActivity
                 getString(R.string.consent_complete_viewPdf));
             analyticsInstance.logEvent(
                 CustomFirebaseAnalytics.Event.ADD_BUTTON_CLICK, eventProperties);
-            if ((ActivityCompat.checkSelfPermission(
-                        ConsentCompletedActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED)
-                || (ActivityCompat.checkSelfPermission(
-                        ConsentCompletedActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED)) {
-              String[] permission =
-                  new String[] {
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                  };
-              if (!hasPermissions(permission)) {
-                ActivityCompat.requestPermissions(
-                    (Activity) ConsentCompletedActivity.this, permission, PERMISSION_REQUEST_CODE);
+            if(Build.VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+              if((ActivityCompat.checkSelfPermission(
+                  ConsentCompletedActivity.this,Manifest.permission.READ_MEDIA_AUDIO)
+                  != PackageManager.PERMISSION_GRANTED)
+                  || (ActivityCompat.checkSelfPermission(
+                  ConsentCompletedActivity.this,Manifest.permission.READ_MEDIA_IMAGES)
+                  != PackageManager.PERMISSION_GRANTED)
+                  || (ActivityCompat.checkSelfPermission(
+                  ConsentCompletedActivity.this,Manifest.permission.READ_MEDIA_VIDEO)
+                  != PackageManager.PERMISSION_GRANTED)) {
+                String[] permission =
+                    new String[]{
+                        Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_IMAGES,
+                        Manifest.permission.READ_MEDIA_VIDEO
+                    };
+                if (!hasPermissions(permission)) {
+                  ActivityCompat.requestPermissions(
+                      (Activity) ConsentCompletedActivity.this, permission, PERMISSION_REQUEST_CODE);
+                } else {
+                  displayPdf();
+                }
               } else {
                 displayPdf();
               }
-            } else {
+            } else if(Build.VERSION.SDK_INT < VERSION_CODES.TIRAMISU) {
+              if ((ActivityCompat.checkSelfPermission(
+                  ConsentCompletedActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                  != PackageManager.PERMISSION_GRANTED)
+                  || (ActivityCompat.checkSelfPermission(
+                  ConsentCompletedActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                  != PackageManager.PERMISSION_GRANTED)) {
+                String[] permission =
+                    new String[]{
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    };
+                if (!hasPermissions(permission)) {
+                  ActivityCompat.requestPermissions(
+                      (Activity) ConsentCompletedActivity.this, permission, PERMISSION_REQUEST_CODE);
+                } else {
+                  displayPdf();
+                }
+              }else {
+                displayPdf();
+              }
+            }
+            else {
               displayPdf();
             }
           }
@@ -176,11 +205,12 @@ public class ConsentCompletedActivity extends AppCompatActivity
   @Override
   public void onRequestPermissionsResult(
       int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     if (requestCode == PERMISSION_REQUEST_CODE) {
       if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_DENIED) {
         Toast.makeText(
-                ConsentCompletedActivity.this, R.string.permission_deniedDate, Toast.LENGTH_SHORT)
-            .show();
+                        ConsentCompletedActivity.this, R.string.permission_deniedDate, Toast.LENGTH_SHORT)
+                .show();
       } else {
         displayPdf();
       }

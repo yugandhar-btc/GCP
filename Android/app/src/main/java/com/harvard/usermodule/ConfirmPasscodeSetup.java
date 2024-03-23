@@ -18,6 +18,8 @@ package com.harvard.usermodule;
 import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -29,6 +31,9 @@ import com.harvard.passcodemodule.PasscodeView;
 import com.harvard.utils.AppController;
 import com.harvard.utils.CustomFirebaseAnalytics;
 import com.harvard.utils.Logger;
+
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 public class ConfirmPasscodeSetup extends AppCompatActivity {
 
@@ -157,26 +162,51 @@ public class ConfirmPasscodeSetup extends AppCompatActivity {
         });
   }
 
-  private class CreateNewPasscode extends AsyncTask<String, String, String> {
+  private class CreateNewPasscode
+//      extends AsyncTask<String, String, String>
+  {
 
-    @Override
-    protected String doInBackground(String... params) {
-      String passcode = params[0];
-      // delete passcode from keystore if already exist
-      String pass = AppController.refreshKeys("passcode");
-      if (pass != null) {
-        AppController.deleteKey("passcode_" + pass);
-      }
-      // storing into keystore
-      AppController.createNewKeys(ConfirmPasscodeSetup.this, "passcode_" + passcode);
-      return null;
+    private void execute(String... params) {
+      Executor executor = Executors.newSingleThreadExecutor();
+      Handler handler = new Handler(Looper.myLooper());
+      executor.execute(new Runnable() {
+        @Override
+        public void run() {
+          String passcode = params[0];
+          // delete passcode from keystore if already exist
+          String pass = AppController.refreshKeys("passcode");
+          if (pass != null) {
+            AppController.deleteKey("passcode_" + pass);
+          }
+          // storing into keystore
+          AppController.createNewKeys(ConfirmPasscodeSetup.this, "passcode_" + passcode);
+          handler.post(new Runnable() {
+            @Override
+            public void run() {
+
+            }
+          });
+        }
+      });
     }
+//    @Override
+//    protected String doInBackground(String... params) {
+//      String passcode = params[0];
+//      // delete passcode from keystore if already exist
+//      String pass = AppController.refreshKeys("passcode");
+//      if (pass != null) {
+//        AppController.deleteKey("passcode_" + pass);
+//      }
+//      // storing into keystore
+//      AppController.createNewKeys(ConfirmPasscodeSetup.this, "passcode_" + passcode);
+//      return null;
+//    }
 
-    @Override
-    protected void onPostExecute(String token) {}
-
-    @Override
-    protected void onPreExecute() {}
+//    @Override
+//    protected void onPostExecute(String token) {}
+//
+//    @Override
+//    protected void onPreExecute() {}
   }
 
   @Override

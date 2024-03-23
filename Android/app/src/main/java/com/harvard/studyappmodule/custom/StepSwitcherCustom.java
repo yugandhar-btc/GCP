@@ -19,7 +19,9 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
-import com.harvard.R;
+import org.researchstack.backbone.R;
+
+
 import java.security.InvalidParameterException;
 import org.researchstack.backbone.ui.step.layout.StepLayout;
 

@@ -124,12 +124,12 @@ public class DateAnswerformatCustom extends AnswerFormatCustom {
     if (dateRange.equalsIgnoreCase("") || dateRange.equalsIgnoreCase("custom")) {
       if (minimumDate != null && resultDate.getTime() < minimumDate.getTime()) {
         return new BodyAnswer(
-            false, R.string.rsb_invalid_answer_date_under, simpleDateFormat.format(minimumDate));
+            false, org.researchstack.backbone.R.string.rsb_invalid_answer_date_under, simpleDateFormat.format(minimumDate));
       }
 
       if (maximumDate != null && resultDate.getTime() > maximumDate.getTime()) {
         return new BodyAnswer(
-            false, R.string.rsb_invalid_answer_date_over, simpleDateFormat.format(maximumDate));
+            false, org.researchstack.backbone.R.string.rsb_invalid_answer_date_over, simpleDateFormat.format(maximumDate));
       }
     } else if (dateRange.equalsIgnoreCase("untilCurrent")) {
       Calendar resultsCalendar = Calendar.getInstance();
@@ -155,7 +155,7 @@ public class DateAnswerformatCustom extends AnswerFormatCustom {
       } else {
         return new BodyAnswer(
             false,
-            R.string.rsb_invalid_answer_date_over,
+                org.researchstack.backbone.R.string.rsb_invalid_answer_date_over,
             simpleDateFormat.format(currentCalendar.getTime()));
       }
     } else if (dateRange.equalsIgnoreCase("afterCurrent")) {
@@ -182,7 +182,7 @@ public class DateAnswerformatCustom extends AnswerFormatCustom {
       } else {
         return new BodyAnswer(
             false,
-            R.string.rsb_invalid_answer_date_under,
+                org.researchstack.backbone.R.string.rsb_invalid_answer_date_under,
             simpleDateFormat.format(currentCalendar.getTime()));
       }
     }
